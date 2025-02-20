@@ -324,6 +324,19 @@ ifdef TEST_MMAP
 	LDFLAGS += -Wno-deprecated-declarations
 endif
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+  HAS_EBPF := $(shell $(CC) -I/usr/include -E - </dev/null >/dev/null 2>&1 && echo 1 || echo 0)
+  ifeq ($(HAS_EBPF),1)
+    CFLAGS_EBPF = -DHAVE_EBPF
+    LDFLAGS_EBPF = -lbpf
+  endif
+endif
+
+# Add to existing CFLAGS and LDFLAGS
+override CFLAGS += $(CFLAGS_EBPF)
+override LDFLAGS += $(LDFLAGS_EBPF)
+
 .PHONY: all
 all:	test_x86 test_shm test_python ready $(PROGS) llvm gcc_plugin test_build all_done
 	-$(MAKE) -C utils/aflpp_driver
