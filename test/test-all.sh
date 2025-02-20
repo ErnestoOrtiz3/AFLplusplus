@@ -2,28 +2,14 @@
 
 . ./test-pre.sh
 
-. ./test-basic.sh
-
-. ./test-llvm.sh
-
-. ./test-llvm-lto.sh
-
-. ./test-gcc-plugin.sh
-
-. ./test-libextensions.sh
-
-. ./test-qemu-mode.sh
-
-. ./test-frida-mode.sh
-
-. ./test-nyx-mode.sh
-
-. ./test-unicorn-mode.sh
-
-. ./test-custom-mutators.sh
-
-. ./test-unittests.sh
-
-. ./test-post.sh
+# Run all the other tests first
+./test-basic.sh
+./test-llvm.sh
+./test-gcc-plugin.sh
+./test-frida-mode.sh
+./test-custom-mutators.sh
+./test-performance.sh
+# Add eBPF test
+./test-ebpf.sh
 
 exit 0

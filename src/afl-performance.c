@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include "afl-fuzz.h"
 #include "types.h"
+#include "afl-ebpf.h"
+#include "debug.h"
 
 #ifdef _HAVE_AVX2
   #define T1HA0_AESNI_AVAILABLE 1
@@ -13,6 +15,25 @@
   #include "xxhash.h"
   #undef XXH_INLINE_ALL
 #endif
+
+// Add function declaration
+static void collect_traditional_stats(afl_state_t *afl);
+
+
+
+static void collect_traditional_stats(afl_state_t *afl) {
+  // Basic performance metrics collection
+  struct rusage rus;
+
+  if (getrusage(RUSAGE_SELF, &rus) == 0) {
+    afl->performance_data.executions++;
+    afl->performance_data.exec_time = rus.ru_utime.tv_sec * 1000000ULL + rus.ru_utime.tv_usec;
+    afl->performance_data.fork_time = rus.ru_stime.tv_sec * 1000000ULL + rus.ru_stime.tv_usec;
+    afl->performance_data.context_switches = rus.ru_nvcsw + rus.ru_nivcsw;
+    afl->performance_data.io_operations = rus.ru_inblock + rus.ru_oublock;
+  }
+}
+
 
 void rand_set_seed(afl_state_t *afl, s64 init_seed) {
 
@@ -423,5 +444,17 @@ char *sha1_hex_for_file(const char *fname, u32 len) {
   ck_free(tmp);
   return hex;
 
+}
+
+void collect_performance_data(afl_state_t *afl) {
+  #ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      collect_ebpf_stats(afl);
+      return;
+    }
+  #endif
+
+  // Fallback to traditional stats collection
+  collect_traditional_stats(afl);
 }
 

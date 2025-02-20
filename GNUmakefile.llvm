@@ -565,5 +565,6 @@ endif
 
 .PHONY: clean
 clean:
-	rm -f *.o *.so *~ a.out core core.[1-9][0-9]* .test2 test-instr .test-instr0 .test-instr1 *.dwo
+	rm -f *.o src/*.o afl_stats.bpf.o
+	rm -f *.so *~ a.out core core.[1-9][0-9]* .test2 test-instr .test-instr0 .test-instr1 *.dwo
 	rm -f $(PROGS) afl-common.o ./afl-c++ ./afl-lto ./afl-lto++ ./afl-clang-lto* ./afl-clang-fast* ./afl-clang*.8 ./ld ./afl-ld ./afl-compiler-rt*.o ./afl-llvm-rt*.o instrumentation/*.o

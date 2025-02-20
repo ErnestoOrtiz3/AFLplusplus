@@ -76,6 +76,8 @@
 #include <sys/file.h>
 #include <sys/types.h>
 #include "asanfuzz.h"
+#include "afl-ebpf.h"
+
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
     defined(__NetBSD__) || defined(__DragonFly__)
@@ -496,6 +498,7 @@ typedef struct afl_state {
   sharedmem_t      shm;
   sharedmem_t     *shm_fuzz;
   afl_env_vars_t   afl_env;
+  struct afl_performance_data performance_data;
 
   char **argv;                                            /* argv if needed */
 

@@ -31,6 +31,7 @@
 #include "common.h"
 #include <limits.h>
 #include <stdlib.h>
+#include "afl-ebpf.h"  
 #ifndef USEMMAP
   #include <sys/mman.h>
   #include <sys/stat.h>
@@ -546,6 +547,13 @@ static void fasan_check_afl_preload(char *afl_preload) {
 /* Main entry point */
 
 int main(int argc, char **argv_orig, char **envp) {
+  #ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      if (init_ebpf_stats() < 0) {
+        WARNF("eBPF stats collection initialization failed, falling back to traditional collection");
+      }
+    }
+  #endif
 
   s32 opt, auto_sync = 0 /*, user_set_cache = 0*/;
   u64 prev_queued = 0;
@@ -1964,6 +1972,212 @@ int main(int argc, char **argv_orig, char **envp) {
       afl_preload = getenv("AFL_PRELOAD");
       u8 *frida_binary = find_afl_binary(argv[0], "afl-frida-trace.so");
       OKF("Injecting %s ...", frida_binary);
+      frida_afl_preload = alloc_printf("%s:%s", afl_preload, frida_binary);
+
+      ck_free(frida_binary);
+
+      setenv("LD_PRELOAD", frida_afl_preload, 1);
+#ifdef __APPLE__
+#endif
+
+#ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      cleanup_ebpf_stats();
+    }
+#endif
+
+    } else {
+
+      afl_preload = getenv("AFL_PRELOAD");
+      u8 *frida_binary = find_afl_binary(argv[0], "afl-frida-trace.so");
+      OKF("Injecting %s ...", frida_binary);
+      frida_afl_preload = alloc_printf("%s:%s", afl_preload, frida_binary);
+
+      ck_free(frida_binary);
+
+      setenv("LD_PRELOAD", frida_afl_preload, 1);
+#ifdef __APPLE__
+#endif
+
+#ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      cleanup_ebpf_stats();
+    }
+#endif
+
+    }
+
+  }
+
+  OKF("Generating fuzz data with a length of min=%u max=%u", afl->min_length,
+      afl->max_length);
+  u32 min_alloc = MAX(64U, afl->min_length);
+  afl_realloc(AFL_BUF_PARAM(in_scratch), min_alloc);
+  afl_realloc(AFL_BUF_PARAM(in), min_alloc);
+  afl_realloc(AFL_BUF_PARAM(out_scratch), min_alloc);
+  afl_realloc(AFL_BUF_PARAM(out), min_alloc);
+  afl_realloc(AFL_BUF_PARAM(eff), min_alloc);
+  afl_realloc(AFL_BUF_PARAM(ex), min_alloc);
+
+  afl->fsrv.use_fauxsrv = afl->non_instrumented_mode == 1 || afl->no_forkserver;
+  afl->fsrv.max_length = afl->max_length;
+
+  #ifdef __linux__
+  if (!afl->fsrv.nyx_mode) {
+
+    check_crash_handling();
+    check_cpu_governor(afl);
+
+  } else {
+
+    u8 *libnyx_binary = find_afl_binary(argv[0], "libnyx.so");
+    afl->fsrv.nyx_handlers = afl_load_libnyx_plugin(libnyx_binary);
+    if (afl->fsrv.nyx_handlers == NULL) {
+
+      FATAL("failed to initialize libnyx.so...");
+
+    }
+
+  }
+
+  #else
+  check_crash_handling();
+  check_cpu_governor(afl);
+  #endif
+
+  #ifdef __APPLE__
+  setenv("DYLD_NO_PIE", "1", 0);
+  #endif
+
+  if (getenv("LD_PRELOAD")) {
+
+    WARNF(
+        "LD_PRELOAD is set, are you sure that is what you want to do "
+        "instead of using AFL_PRELOAD?");
+
+  }
+
+  if (afl->afl_env.afl_preload) {
+
+    if (afl->fsrv.qemu_mode) {
+
+      /* afl-qemu-trace takes care of converting AFL_PRELOAD. */
+
+    } else if (afl->fsrv.frida_mode) {
+
+      afl_preload = getenv("AFL_PRELOAD");
+      u8 *frida_binary = find_afl_binary(argv[0], "afl-frida-trace.so");
+      OKF("Injecting %s ...", frida_binary);
+      frida_afl_preload = alloc_printf("%s:%s", afl_preload, frida_binary);
+
+      ck_free(frida_binary);
+
+      setenv("LD_PRELOAD", frida_afl_preload, 1);
+#ifdef __APPLE__
+#endif
+
+#ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      cleanup_ebpf_stats();
+    }
+#endif
+
+    } else {
+
+      afl_preload = getenv("AFL_PRELOAD");
+      u8 *frida_binary = find_afl_binary(argv[0], "afl-frida-trace.so");
+      OKF("Injecting %s ...", frida_binary);
+      frida_afl_preload = alloc_printf("%s:%s", afl_preload, frida_binary);
+
+      ck_free(frida_binary);
+
+      setenv("LD_PRELOAD", frida_afl_preload, 1);
+#ifdef __APPLE__
+#endif
+
+#ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      cleanup_ebpf_stats();
+    }
+#endif
+
+    }
+
+  }
+
+  OKF("Generating fuzz data with a length of min=%u max=%u", afl->min_length,
+      afl->max_length);
+  u32 min_alloc = MAX(64U, afl->min_length);
+  afl_realloc(AFL_BUF_PARAM(in
+          fasan_check_afl_preload(afl_preload);
+
+          setenv("ASAN_OPTIONS", "detect_leaks=false", 1);
+
+        }
+
+        u8 *frida_binary = find_afl_binary(argv[0], "afl-frida-trace.so");
+        OKF("Injecting %s ...", frida_binary);
+        frida_afl_preload = alloc_printf("%s:%s", afl_preload, frida_binary);
+
+        ck_free(frida_binary);
+
+        setenv("LD_PRELOAD", frida_afl_preload, 1);
+  #ifdef __APPLE__
+
+  #ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      if (init_ebpf_stats() < 0) {
+        WARNF("eBPF stats collection initialization failed, falling back to traditional collection");
+      }
+    }
+  #endif
+
+  #ifdef __linux__
+  if (!afl->fsrv.nyx_mode) {
+
+    check_crash_handling();
+    check_cpu_governor(afl);
+
+  } else {
+
+    u8 *libnyx_binary = find_afl_binary(argv[0], "libnyx.so");
+    afl->fsrv.nyx_handlers = afl_load_libnyx_plugin(libnyx_binary);
+    if (afl->fsrv.nyx_handlers == NULL) {
+
+      FATAL("failed to initialize libnyx.so...");
+
+    }
+
+  }
+
+  #else
+  check_crash_handling();
+  check_cpu_governor(afl);
+  #endif
+
+  #ifdef __APPLE__
+  setenv("DYLD_NO_PIE", "1", 0);
+  #endif
+
+  if (getenv("LD_PRELOAD")) {
+
+    WARNF(
+        "LD_PRELOAD is set, are you sure that is what you want to do "
+        "instead of using AFL_PRELOAD?");
+
+  }
+
+  if (afl->afl_env.afl_preload) {
+
+    if (afl->fsrv.qemu_mode) {
+
+      /* afl-qemu-trace takes care of converting AFL_PRELOAD. */
+
+    } else if (afl->fsrv.frida_mode) {
+
+      afl_preload = getenv("AFL_PRELOAD");
+      u8 *frida_binary = find_afl_binary(argv[0], "afl-frida-trace.so");
+      OKF("Injecting %s ...", frida_binary);
       if (afl_preload) {
 
         if (afl->fsrv.frida_asan) {
@@ -1993,8 +2207,16 @@ int main(int argc, char **argv_orig, char **envp) {
 
         setenv("LD_PRELOAD", frida_afl_preload, 1);
   #ifdef __APPLE__
-        setenv("DYLD_INSERT_LIBRARIES", frida_afl_preload, 1);
   #endif
+
+  #ifdef HAVE_EBPF
+    if (AFL_EBPF_AVAILABLE) {
+      cleanup_ebpf_stats();
+    }
+  #endif
+  
+  
+        setenv("DYLD_INSERT_LIBRARIES", frida_afl_preload, 1);
 
       }
 

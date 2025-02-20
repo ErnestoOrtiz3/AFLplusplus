@@ -563,3 +563,10 @@
 
 #endif                                                  /* ! _HAVE_CONFIG_H */
 
+/* Add eBPF configuration */
+#ifdef HAVE_EBPF
+  #define AFL_EBPF_AVAILABLE 1
+#else
+  #define AFL_EBPF_AVAILABLE 0
+#endif
+
