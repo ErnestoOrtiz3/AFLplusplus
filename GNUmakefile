@@ -41,6 +41,24 @@ ARCH = $(shell uname -m)
 
 $(info [*] Compiling AFL++ for OS $(SYS) on ARCH $(ARCH))
 
+# eBPF support
+LIBBPF_AVAILABLE:= $(shell pkg-config --exists libbpf && echo 1 || echo 0)
+
+ifeq "$(LIBBPF_AVAILABLE)" "1"
+  LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf)
+  LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf)
+endif
+
+# Allow explicit disable of eBPF support
+ifneq "$(NO_EBPF)" ""
+  LIBBPF_AVAILABLE = 0
+endif
+
+ifeq "$(LIBBPF_AVAILABLE)" "1"
+  CFLAGS += -DUSE_EBPF $(LIBBPF_CFLAGS)
+  LDFLAGS += $(LIBBPF_LDFLAGS)
+endif
+
 ifdef NO_UTF
   override CFLAGS_OPT += -DFANCY_BOXES_NO_UTF
 endif
