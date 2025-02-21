@@ -326,7 +326,8 @@ endif
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-  HAS_EBPF := $(shell $(CC) -I/usr/include -E - </dev/null >/dev/null 2>&1 && echo 1 || echo 0)
+  HAS_EBPF := $(shell pkg-config --exists libbpf && echo 1 || echo 0)
+  $(info [DEBUG] HAS_EBPF = $(HAS_EBPF))
   ifeq ($(HAS_EBPF),1)
     CFLAGS_EBPF = -DHAVE_EBPF
     LDFLAGS_EBPF = -lbpf
@@ -336,10 +337,19 @@ endif
 # Add to existing CFLAGS and LDFLAGS
 override CFLAGS += $(CFLAGS_EBPF)
 override LDFLAGS += $(LDFLAGS_EBPF)
+$(info [DEBUG] Final CFLAGS = $(CFLAGS))
+$(info [DEBUG] Final LDFLAGS = $(LDFLAGS))
 
 .PHONY: all
 all:	test_x86 test_shm test_python ready $(PROGS) llvm gcc_plugin test_build all_done
+	$(info [DEBUG] Starting eBPF build in all target)
 	-$(MAKE) -C utils/aflpp_driver
+ifeq "$(HAS_EBPF)" "1"
+	$(info [DEBUG] Building eBPF module...)
+	$(MAKE) -C ebpf_mode || { echo "[DEBUG] eBPF build failed in ebpf_mode"; exit 1; }
+	$(info [DEBUG] Checking for ebpf.o...)
+	@test -e ebpf.o && echo "[DEBUG] ebpf.o exists" || echo "[DEBUG] ebpf.o not found"
+endif
 	@echo
 	@echo
 	@echo
@@ -615,6 +625,16 @@ all_done: test_build
 	@test -e cmplog-instructions-pass.so && echo "[+] LLVM mode for 'afl-cc' successfully built!" || echo "[-] LLVM mode for 'afl-cc'  failed to build, likely you either don't have llvm installed, or you need to set LLVM_CONFIG, to point to e.g. llvm-config-11. See instrumentation/README.llvm.md how to do this. Highly recommended!"
 	@test -e SanitizerCoverageLTO.so && echo "[+] LLVM LTO mode for 'afl-cc' successfully built!" || echo "[-] LLVM LTO mode for 'afl-cc'  failed to build, this would need LLVM 11+, see instrumentation/README.lto.md how to build it"
 	@test -e afl-gcc-pass.so && echo "[+] gcc_plugin for 'afl-cc' successfully built!" || echo "[-] gcc_plugin for 'afl-cc'  failed to build, unless you really need it that is fine - or read instrumentation/README.gcc_plugin.md how to build it"
+ifeq "$(HAS_EBPF)" "1"
+	@test -e ebpf.o && echo "[+] eBPF mode successfully built!" || echo "[-] eBPF mode failed to build, check your eBPF/libbpf installation"
+endif
+	@test -e afl-cc && echo "[+] All done! Be sure to review the README.md - it's pretty short and useful."
+	@test -e afl-cc || echo "[-] ERROR  - neither afl-clang-fast or afl-gcc-fast could be compiled - YOU ARE MISSING PACKAGES! Read docs/INSTALL.md!"
+	@if [ "$(SYS)" = "Darwin" ]; then printf "\nWARNING: Fuzzing on MacOS X is slow because of the unusually high overhead of\nfork() on this OS. Consider using Linux or *BSD for fuzzing software not\nspecifically for MacOS.\n\n"; fi
+	@! tty <&1 >/dev/null || printf "\033[0;30mNOTE: If you can read this, your terminal probably uses white background.\nThis will make the UI hard to read. See docs/status_screen.md for advice.\033[0m\n" 2>/dev/null
+ifeq "$(HAS_EBPF)" "1"
+	@test -e ebpf.o && echo "[+] eBPF mode successfully built!" || echo "[-] eBPF mode failed to build, check your eBPF/libbpf installation"
+endif
 	@test -e afl-cc && echo "[+] All done! Be sure to review the README.md - it's pretty short and useful."
 	@test -e afl-cc || echo "[-] ERROR  - neither afl-clang-fast or afl-gcc-fast could be compiled - YOU ARE MISSING PACKAGES! Read docs/INSTALL.md!"
 	@if [ "$(SYS)" = "Darwin" ]; then printf "\nWARNING: Fuzzing on MacOS X is slow because of the unusually high overhead of\nfork() on this OS. Consider using Linux or *BSD for fuzzing software not\nspecifically for MacOS.\n\n"; fi
@@ -759,11 +779,15 @@ endif
 
 .PHONY: source-only
 source-only: all
+	$(info [DEBUG] In source-only target)
 	-$(MAKE) -j$(nproc) -f GNUmakefile.llvm
 ifneq "$(SYS)" "Darwin"
 	-$(MAKE) -f GNUmakefile.gcc_plugin
 	-$(MAKE) -C utils/libdislocator
 	-$(MAKE) -C utils/libtokencap
+  ifeq "$(HAS_EBPF)" "1"
+	-$(MAKE) -C ebpf_mode
+  endif
 endif
 	# -$(MAKE) -C utils/plot_ui
 ifeq "$(SYS)" "Linux"
