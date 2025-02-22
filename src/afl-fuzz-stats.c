@@ -25,6 +25,9 @@
  */
 
 #include "afl-fuzz.h"
+#ifdef USE_EBPF
+#include "afl-ebpf.h"
+#endif
 #include "envs.h"
 #include <limits.h>
 
@@ -2353,6 +2356,14 @@ void show_init_stats(afl_state_t *afl) {
     avg_us = afl->total_cal_us / afl->total_cal_cycles;
 
   }
+  SAYF(bV bSTOP "  afl++ [%s] based on afl by Michal Zalewski and a large online "
+    "community\n", VERSION);
+
+#ifdef USE_EBPF
+if (afl->ebpf_ctx && afl->ebpf_ctx->enabled) {
+ SAYF(bV bSTOP "                          eBPF support available\n");
+}
+#endif
 
   for (i = 0; i < afl->queued_items; i++) {
 

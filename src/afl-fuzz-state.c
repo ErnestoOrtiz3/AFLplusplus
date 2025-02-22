@@ -26,6 +26,9 @@
 #include <signal.h>
 #include <limits.h>
 #include "afl-fuzz.h"
+#ifdef USE_EBPF
+#include "afl-ebpf.h"
+#endif
 #include "envs.h"
 
 char *power_names[POWER_SCHEDULES_NUM] = {"explore", "mmopt", "exploit",
@@ -80,7 +83,9 @@ void afl_state_init(afl_state_t *afl, uint32_t map_size) {
   memset(afl, 0, sizeof(afl_state_t));
 
   afl->shm.map_size = map_size ? map_size : MAP_SIZE;
-
+  #ifdef USE_EBPF
+    afl->ebpf_ctx = NULL;  /* Will be initialized later in main() */
+  #endif
   afl->w_init = 0.9;
   afl->w_end = 0.3;
   afl->g_max = 5000;
@@ -732,7 +737,12 @@ void read_afl_environment(afl_state_t *afl, char **envp) {
 /* Removes this afl_state instance and frees it. */
 
 void afl_state_deinit(afl_state_t *afl) {
-
+  #ifdef USE_EBPF
+  if (afl->ebpf_ctx) {
+    afl_ebpf_deinit(afl->ebpf_ctx);
+    afl->ebpf_ctx = NULL;
+  }
+  #endif
   if (afl->in_place_resume) { ck_free(afl->in_dir); }
   if (afl->sync_id) { ck_free(afl->out_dir); }
   if (afl->pass_stats) { ck_free(afl->pass_stats); }

@@ -17,14 +17,19 @@
 
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
+#include <stdbool.h>
 
-/* Basic eBPF context structure */
+/* eBPF context structure */
 struct afl_ebpf_ctx {
-  bool     enabled;
-  int      prog_fd;
-  int      map_fd;
+  bool enabled;      /* Whether eBPF support is enabled */
+  int  prog_fd;     /* File descriptor for eBPF program */
+  int  map_fd;      /* File descriptor for eBPF map */
 };
 
+
+/* Function declarations */
+struct afl_ebpf_ctx *afl_ebpf_init(void);
+void afl_ebpf_deinit(struct afl_ebpf_ctx *ctx);
 #endif /* USE_EBPF */
 
 #endif /* !_AFL_EBPF_H */

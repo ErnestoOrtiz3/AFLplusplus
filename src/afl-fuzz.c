@@ -25,6 +25,9 @@
  */
 
 #include "afl-fuzz.h"
+#ifdef USE_EBPF
+#include "afl-ebpf.h"
+#endif
 #include "alloc-inl.h"
 #include "cmplog.h"
 #include "asanfuzz.h"
@@ -598,6 +601,9 @@ int main(int argc, char **argv_orig, char **envp) {
 
   afl_state_init(afl, map_size);
   afl->debug = debug;
+  #ifdef USE_EBPF
+    afl->ebpf_ctx = afl_ebpf_init();
+  #endif
   afl_fsrv_init(&afl->fsrv);
   if (debug) { afl->fsrv.debug = true; }
   read_afl_environment(afl, envp);

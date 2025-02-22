@@ -24,6 +24,9 @@
  */
 
 #include "afl-fuzz.h"
+#ifdef USE_EBPF
+#include "afl-ebpf.h"
+#endif
 #include "common.h"
 #include <limits.h>
 #include <string.h>
