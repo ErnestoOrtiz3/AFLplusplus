@@ -17,6 +17,7 @@
 #TEST_MMAP=1
 # the hash character is treated differently in different make versions
 # so use a variable for '#'
+.DEFAULT_GOAL := all
 HASH=\#
 
 PREFIX      ?= /usr/local
@@ -55,8 +56,15 @@ ifneq "$(NO_EBPF)" ""
 endif
 
 ifeq "$(LIBBPF_AVAILABLE)" "1"
+	BPFTOOL := $(shell which bpftool 2>/dev/null)
+	ifndef BPFTOOL
+		$(error bpftool not found. Please install bpftool to enable eBPF support)
+	endif
   CFLAGS += -DUSE_EBPF $(LIBBPF_CFLAGS)
   LDFLAGS += $(LIBBPF_LDFLAGS)
+
+	# Add eBPF object and header as prerequisites for afl-fuzz
+	AFL_FUZZ_PREREQS = src/afl-ebpf-execve.o src/afl-ebpf-execve.skel.h
 endif
 
 ifdef NO_UTF
@@ -213,6 +221,38 @@ ifeq "$(SYS)" "Haiku"
   #SPECIAL_PERFORMANCE += -DUSEMMAP=1
 endif
 
+# Add bpftool detection
+BPFTOOL := $(shell which bpftool 2>/dev/null)
+
+ifdef USE_EBPF
+ ifndef BPFTOOL
+   $(error bpftool not found. Please install bpftool to enable eBPF support)
+ endif
+  $(info Compiling with eBPF support)
+  override CFLAGS += -DUSE_EBPF
+  override LDFLAGS += -lbpf
+  BPF_SOURCES = src/afl-ebpf-execve.c
+  BPF_OBJECTS = $(BPF_SOURCES:.c=.o)
+endif
+
+# Rule to compile BPF programs
+src/afl-ebpf-execve.o: src/afl-ebpf-execve.c
+	clang -target bpf \
+		-D__KERNEL__ \
+		-D__TARGET_ARCH_x86 \
+		-I/usr/include/$(shell uname -m)-linux-gnu \
+		-I/usr/include/linux \
+		-I/usr/include/bpf \
+		-g -O2 -c $< -o $@ && \
+	llvm-strip -g $@
+
+# Rule to generate skeleton header
+src/afl-ebpf-execve.skel.h: src/afl-ebpf-execve.o
+	$(BPFTOOL) gen skeleton $< > $@
+
+# Add skeleton header as dependency
+src/afl-ebpf.o: src/afl-ebpf-execve.skel.h
+
 AFL_FUZZ_FILES = $(wildcard src/afl-fuzz*.c) src/afl-ebpf.c
 
 ifneq "$(shell command -v python3m 2>/dev/null)" ""
@@ -351,6 +391,7 @@ all:	test_x86 test_shm test_python ready $(PROGS) llvm gcc_plugin test_build all
 	@echo
 	@echo Build Summary:
 	@test -e afl-fuzz && echo "[+] afl-fuzz and supporting tools successfully built" || echo "[-] afl-fuzz could not be built, please set CC to a working compiler"
+	@test "$(LIBBPF_AVAILABLE)" = "1" && echo "[+] eBPF support enabled" || echo "[-] eBPF support not available"
 	@test -e afl-llvm-pass.so && echo "[+] LLVM basic mode successfully built" || echo "[-] LLVM mode could not be built, please install at least llvm-11 and clang-11 or newer, see docs/INSTALL.md"
 	@test -e SanitizerCoveragePCGUARD.so && echo "[+] LLVM mode successfully built" || echo "[-] LLVM mode could not be built, please install at least llvm-13 and clang-13 or newer, see docs/INSTALL.md"
 	@test -e SanitizerCoverageLTO.so && echo "[+] LLVM LTO mode successfully built" || echo "[-] LLVM LTO mode could not be built, it is optional, if you want it, please install LLVM and LLD 11+. More information at instrumentation/README.lto.md on how to build it"
@@ -495,7 +536,13 @@ src/afl-forkserver.o : $(COMM_HDR) src/afl-forkserver.c include/forkserver.h
 src/afl-sharedmem.o : $(COMM_HDR) src/afl-sharedmem.c include/sharedmem.h
 	$(CC) $(CFLAGS) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) -c src/afl-sharedmem.c -o src/afl-sharedmem.o
 
-afl-fuzz: $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o | test_x86
+ifeq "$(LIBBPF_AVAILABLE)" "1"
+AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o src/afl-ebpf-execve.skel.h
+else
+AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o
+endif
+
+afl-fuzz: $(AFL_FUZZ_DEPS) | test_x86
 	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o -o $@ $(PYFLAGS) $(LDFLAGS) -lm
 
 afl-showmap: src/afl-showmap.c src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o $(COMM_HDR) | test_x86
@@ -629,6 +676,9 @@ all_done: test_build
 
 .PHONY: clean
 clean:
+	rm -rf $(BUILD_DIR)
+	rm -f $(BPF_OBJECTS)
+	rm -f src/afl-ebpf-execve.skel.h
 	rm -rf $(PROGS) afl-fuzz-document as afl-as afl-g++ afl-clang afl-clang++ *.o src/*.o *~ a.out core core.[1-9][0-9]* *.stackdump .test .test1 .test2 test-instr .test-instr0 .test-instr1 afl-cs-proxy afl-qemu-trace afl-gcc-fast afl-g++-fast ld *.so *.8 test/unittests/*.o test/unittests/unit_maybe_alloc test/unittests/preallocable .afl-* afl-gcc afl-g++ afl-clang afl-clang++ test/unittests/unit_hash test/unittests/unit_rand *.dSYM lib*.a
 	-$(MAKE) -f GNUmakefile.llvm clean
 	-$(MAKE) -f GNUmakefile.gcc_plugin clean

@@ -2362,6 +2362,12 @@ void show_init_stats(afl_state_t *afl) {
 #ifdef USE_EBPF
 if (afl->ebpf_ctx && afl->ebpf_ctx->enabled) {
  SAYF(bV bSTOP "                          eBPF support available\n");
+ u64 ebpf_execs = afl_ebpf_get_execs(afl->ebpf_ctx);
+  
+ // For now, just log the difference between AFL's count and eBPF's count
+ if (ebpf_execs != (u64)-1) {
+   SAYF(bV bSTOP " eBPF execs : " cRST "%-21llu" bSTG bV "\n", ebpf_execs);
+ }
 }
 #endif
 

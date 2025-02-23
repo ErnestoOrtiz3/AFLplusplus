@@ -18,18 +18,27 @@
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include <stdbool.h>
+#include <linux/bpf.h>
+
+
+struct exec_stats {
+  __u64 total_execs; // Counter for total executions tracked by eBPF
+};
 
 /* eBPF context structure */
 struct afl_ebpf_ctx {
   bool enabled;      /* Whether eBPF support is enabled */
   int  prog_fd;     /* File descriptor for eBPF program */
   int  map_fd;      /* File descriptor for eBPF map */
+  struct exec_stats stats; // Structure to hold the execution statistics
 };
 
 
 /* Function declarations */
-struct afl_ebpf_ctx *afl_ebpf_init(void);
-void afl_ebpf_deinit(struct afl_ebpf_ctx *ctx);
+struct afl_ebpf_ctx *afl_ebpf_init(void); // Initialize eBPF context
+void afl_ebpf_deinit(struct afl_ebpf_ctx *ctx); // Cleanup eBPF resources
+int afl_ebpf_get_execs(struct afl_ebpf_ctx *ctx); // Get execution count
+
 #endif /* USE_EBPF */
 
 #endif /* !_AFL_EBPF_H */
