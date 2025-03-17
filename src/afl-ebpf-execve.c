@@ -4,7 +4,7 @@
 #include <linux/types.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
-#include <linux/pid.h>
+//#include <linux/pid.h>
 
 // Required GPL license for eBPF programs
 char LICENSE[] SEC("license") = "GPL";
@@ -32,7 +32,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(max_entries, 1);
     __type(key, __u32);
-    __type(value, pid_t);
+    __type(value, int);
 } fuzzer_pid SEC(".maps");
 
 // Attach to execve syscall entry point
@@ -42,10 +42,12 @@ int trace_execve_enter(struct syscalls_enter_execve_args *ctx) {
     __u64 *count;
     
     // Get current process's parent PID
-    pid_t ppid = bpf_get_current_task()->parent->tgid;
+    //pid_t ppid = bpf_get_current_task()->parent->tgid;
+    int ppid = bpf_get_current_pid_tgid() >> 32;
     
     // Get fuzzer PID from map
-    pid_t *fuzz_pid = bpf_map_lookup_elem(&fuzzer_pid, &key);
+    //pid_t *fuzz_pid = bpf_map_lookup_elem(&fuzzer_pid, &key);
+    int *fuzz_pid = bpf_map_lookup_elem(&fuzzer_pid, &key);
     if (!fuzz_pid) return 0;
     
     // Only count executions where parent is the fuzzer

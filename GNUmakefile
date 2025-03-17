@@ -237,7 +237,7 @@ endif
 
 # Rule to compile BPF programs
 src/afl-ebpf-perf.o: src/afl-ebpf-perf.c
-    clang -target bpf \
+	clang -target bpf \
         -D__KERNEL__ \
         -D__TARGET_ARCH_x86 \
         -I/usr/include/$(shell uname -m)-linux-gnu \
@@ -248,11 +248,11 @@ src/afl-ebpf-perf.o: src/afl-ebpf-perf.c
 
 # Rule to generate skeleton header
 src/afl-ebpf-perf.skel.h: src/afl-ebpf-perf.o
-    $(BPFTOOL) gen skeleton $< > $@
+	$(BPFTOOL) gen skeleton $< > $@
 
 # Rule to compile BPF execve program
 src/afl-ebpf-execve.o: src/afl-ebpf-execve.c
-    clang -target bpf \
+	clang -target bpf \
         -D__KERNEL__ \
         -D__TARGET_ARCH_x86 \
         -I/usr/include/$(shell uname -m)-linux-gnu \
@@ -263,7 +263,7 @@ src/afl-ebpf-execve.o: src/afl-ebpf-execve.c
 
 # Rule to generate execve skeleton header
 src/afl-ebpf-execve.skel.h: src/afl-ebpf-execve.o
-    $(BPFTOOL) gen skeleton $< > $@
+	$(BPFTOOL) gen skeleton $< > $@
 
 # Update afl-ebpf.o dependencies to include both skeleton headers
 src/afl-ebpf.o: src/afl-ebpf-perf.skel.h src/afl-ebpf-execve.skel.h
