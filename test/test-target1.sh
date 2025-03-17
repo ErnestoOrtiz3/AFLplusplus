@@ -36,10 +36,20 @@ test -e ../afl-cc && {
   kill -SIGINT $FUZZER_PID 2>/dev/null
   wait $FUZZER_PID 2>/dev/null
 
-  # Step 3: Run with eBPF
-  $ECHO "$GREY[*] Running target with eBPF, this will take approx 10 seconds"
+  # Step 3: Run with eBPF in PERF mode
+  $ECHO "$GREY[*] Running target with eBPF PERF mode, this will take approx 10 seconds"
   touch input.txt  # Ensure input file exists
-  AFL_DEBUG=1 AFL_NO_UI=1 ../afl-fuzz -V10 -m none -i in -o out-with-ebpf -f input.txt -- ./ebpf-target input.txt 2>&1 &
+  AFL_USE_EBPF=1 AFL_EBPF_MODE=0 AFL_DEBUG=1 AFL_NO_UI=1 ../afl-fuzz -V10 -m none -i in -o out-with-ebpf-perf -f input.txt -- ./ebpf-target input.txt 2>&1 &
+  FUZZER_PID=$!
+  
+  sleep 15  # Give it more time to generate stats
+  kill -SIGINT $FUZZER_PID 2>/dev/null
+  wait $FUZZER_PID 2>/dev/null
+
+  # Step 4: Run with eBPF in EXECVE mode
+  $ECHO "$GREY[*] Running target with eBPF EXECVE mode, this will take approx 10 seconds"
+  touch input.txt  # Ensure input file exists
+  AFL_USE_EBPF=1 AFL_EBPF_MODE=1 AFL_DEBUG=1 AFL_NO_UI=1 ../afl-fuzz -V10 -m none -i in -o out-with-ebpf-execve -f input.txt -- ./ebpf-target input.txt 2>&1 &
   FUZZER_PID=$!
   
   sleep 15  # Give it more time to generate stats
@@ -56,9 +66,18 @@ test -e ../afl-cc && {
     exit ${CODE}
   fi
 
-  if [ ! -f "out-with-ebpf/default/fuzzer_stats" ]; then
-    $ECHO "$RED[!] No stats file found for eBPF run"
-    ls -la out-with-ebpf/default/ 2>/dev/null || echo "Output directory not created"
+  if [ ! -f "out-with-ebpf-perf/default/fuzzer_stats" ]; then
+    $ECHO "$RED[!] No stats file found for eBPF PERF mode run"
+    ls -la out-with-ebpf-perf/default/ 2>/dev/null || echo "Output directory not created"
+    $ECHO "$RED[!] Contents of current directory:"
+    ls -la
+    CODE=1
+    exit ${CODE}
+  fi
+  
+  if [ ! -f "out-with-ebpf-execve/default/fuzzer_stats" ]; then
+    $ECHO "$RED[!] No stats file found for eBPF EXECVE mode run"
+    ls -la out-with-ebpf-execve/default/ 2>/dev/null || echo "Output directory not created"
     $ECHO "$RED[!] Contents of current directory:"
     ls -la
     CODE=1
@@ -67,28 +86,46 @@ test -e ../afl-cc && {
 
   # Capture execution stats
   NO_EBPF_EXECS=`grep execs_done out-no-ebpf/default/fuzzer_stats | awk '{print$3}'`
-  EBPF_EXECS=`grep execs_done out-with-ebpf/default/fuzzer_stats | awk '{print$3}'`
+  EBPF_PERF_EXECS=`grep execs_done out-with-ebpf-perf/default/fuzzer_stats | awk '{print$3}'`
+  EBPF_EXECVE_EXECS=`grep execs_done out-with-ebpf-execve/default/fuzzer_stats | awk '{print$3}'`
 
   # Compare results
-  if [ -n "$NO_EBPF_EXECS" ] && [ -n "$EBPF_EXECS" ]; then
-    $ECHO "$GREEN[+] Execution counts - No eBPF: $NO_EBPF_EXECS, With eBPF: $EBPF_EXECS"
+  if [ -n "$NO_EBPF_EXECS" ] && [ -n "$EBPF_PERF_EXECS" ] && [ -n "$EBPF_EXECVE_EXECS" ]; then
+    $ECHO "$GREEN[+] Execution counts:"
+    $ECHO "$GREEN    - No eBPF: $NO_EBPF_EXECS"
+    $ECHO "$GREEN    - eBPF PERF mode: $EBPF_PERF_EXECS"
+    $ECHO "$GREEN    - eBPF EXECVE mode: $EBPF_EXECVE_EXECS"
     
     # Extract edges found (unique paths)
     NO_EBPF_EDGES=$(grep "edges_found" out-no-ebpf/default/fuzzer_stats | awk '{print $3}')
-    EBPF_EDGES=$(grep "edges_found" out-with-ebpf/default/fuzzer_stats | awk '{print $3}')
+    EBPF_PERF_EDGES=$(grep "edges_found" out-with-ebpf-perf/default/fuzzer_stats | awk '{print $3}')
+    EBPF_EXECVE_EDGES=$(grep "edges_found" out-with-ebpf-execve/default/fuzzer_stats | awk '{print $3}')
     
     # Extract corpus counts
     NO_EBPF_CORPUS=$(grep "corpus_count" out-no-ebpf/default/fuzzer_stats | awk '{print $3}')
-    EBPF_CORPUS=$(grep "corpus_count" out-with-ebpf/default/fuzzer_stats | awk '{print $3}')
+    EBPF_PERF_CORPUS=$(grep "corpus_count" out-with-ebpf-perf/default/fuzzer_stats | awk '{print $3}')
+    EBPF_EXECVE_CORPUS=$(grep "corpus_count" out-with-ebpf-execve/default/fuzzer_stats | awk '{print $3}')
     
-    if [ -n "$NO_EBPF_EDGES" ] && [ -n "$EBPF_EDGES" ]; then
-      $ECHO "$GREEN[+] Unique edges - No eBPF: $NO_EBPF_EDGES, With eBPF: $EBPF_EDGES"
-      $ECHO "$GREEN[+] Corpus size - No eBPF: $NO_EBPF_CORPUS, With eBPF: $EBPF_CORPUS"
+    if [ -n "$NO_EBPF_EDGES" ] && [ -n "$EBPF_PERF_EDGES" ] && [ -n "$EBPF_EXECVE_EDGES" ]; then
+      $ECHO "$GREEN[+] Unique edges:"
+      $ECHO "$GREEN    - No eBPF: $NO_EBPF_EDGES"
+      $ECHO "$GREEN    - eBPF PERF mode: $EBPF_PERF_EDGES"
+      $ECHO "$GREEN    - eBPF EXECVE mode: $EBPF_EXECVE_EDGES"
+      
+      $ECHO "$GREEN[+] Corpus size:"
+      $ECHO "$GREEN    - No eBPF: $NO_EBPF_CORPUS"
+      $ECHO "$GREEN    - eBPF PERF mode: $EBPF_PERF_CORPUS"
+      $ECHO "$GREEN    - eBPF EXECVE mode: $EBPF_EXECVE_CORPUS"
       
       # Also show coverage percentage
       NO_EBPF_COV=$(grep "bitmap_cvg" out-no-ebpf/default/fuzzer_stats | awk '{print $3}')
-      EBPF_COV=$(grep "bitmap_cvg" out-with-ebpf/default/fuzzer_stats | awk '{print $3}')
-      $ECHO "$GREEN[+] Coverage - No eBPF: $NO_EBPF_COV, With eBPF: $EBPF_COV"
+      EBPF_PERF_COV=$(grep "bitmap_cvg" out-with-ebpf-perf/default/fuzzer_stats | awk '{print $3}')
+      EBPF_EXECVE_COV=$(grep "bitmap_cvg" out-with-ebpf-execve/default/fuzzer_stats | awk '{print $3}')
+      
+      $ECHO "$GREEN[+] Coverage:"
+      $ECHO "$GREEN    - No eBPF: $NO_EBPF_COV"
+      $ECHO "$GREEN    - eBPF PERF mode: $EBPF_PERF_COV"
+      $ECHO "$GREEN    - eBPF EXECVE mode: $EBPF_EXECVE_COV"
     else
       $ECHO "$RED[!] Failed to extract edge counts"
       CODE=1

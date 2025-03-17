@@ -1,38 +1,47 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
-    char buf[256];
-    FILE *f;
+    char buf[10] = {0};
+    FILE *fp;
     
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
+    if (argc < 2) {
+        printf("Usage: %s <input_file>\n", argv[0]);
         return 1;
     }
     
-    f = fopen(argv[1], "r");
-    if (!f) return 1;
-    
-    if (fgets(buf, sizeof(buf), f) == NULL) {
-        fclose(f);
+    fp = fopen(argv[1], "rb");
+    if (!fp) {
+        perror("Failed to open input file");
         return 1;
     }
-    fclose(f);
     
-    // Based on input, execute different commands
+    // Read first byte from input
+    if (fread(buf, 1, 1, fp) < 1) {
+        printf("Failed to read input\n");
+        fclose(fp);
+        return 1;
+    }
+    
+    fclose(fp);
+    
+    // Based on input, execute different code paths
     switch(buf[0]) {
         case '1':
-            system("ls");
+            printf("Would have run: ls\n");
+            // For a real test, you could use: system("ls");
             break;
         case '2':
-            system("pwd");
+            printf("Would have run: pwd\n");
+            // For a real test, you could use: system("pwd");
             break;
         case '3':
-            execl("/bin/echo", "echo", "hello", NULL);
+            printf("hello\n");
             break;
         default:
-            printf("Invalid input\n");
+            printf("Invalid input: %c\n", buf[0]);
     }
     
     return 0;

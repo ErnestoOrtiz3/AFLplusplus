@@ -659,6 +659,34 @@ void read_afl_environment(afl_state_t *afl, char **envp) {
             afl->afl_env.afl_sha1_filenames =
                 get_afl_env(afl_environment_variables[i]) ? 1 : 0;
 
+          } else if (!strncmp(env, "AFL_USE_EBPF", afl_environment_variable_len)) {
+            #ifdef USE_EBPF
+            afl->use_ebpf = get_afl_env(afl_environment_variables[i]) ? 1 : 0;
+            if (afl->use_ebpf) {
+              afl->disable_regular_counter = 1;  // Automatically disable regular counter when eBPF is enabled
+            }
+            #else
+            WARNF("eBPF support not compiled in, AFL_USE_EBPF ignored");
+            #endif
+          } else if (!strncmp(env, "AFL_EBPF_MODE", afl_environment_variable_len)) {
+            #ifdef USE_EBPF
+            char *mode_str = (char *)get_afl_env(afl_environment_variables[i]);
+            if (mode_str) {
+              int mode = atoi(mode_str);
+              if (mode != EBPF_MODE_PERF && mode != EBPF_MODE_EXECVE) {
+                WARNF("Invalid eBPF mode: %d, using default (PERF mode)", mode);
+              } else {
+                afl->ebpf_mode = mode;
+                if (mode == EBPF_MODE_EXECVE) {
+                  OKF("Using eBPF EXECVE tracing mode");
+                } else {
+                  OKF("Using eBPF PERF counter mode");
+                }
+              }
+            }
+            #else
+            WARNF("eBPF support not compiled in, AFL_EBPF_MODE ignored");
+            #endif
           }
 
         } else {

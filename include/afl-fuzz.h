@@ -493,6 +493,10 @@ typedef struct afl_state {
   u32 _id;
   #ifdef USE_EBPF
     struct afl_ebpf_ctx *ebpf_ctx;        /* eBPF context for performance monitoring */
+    u8  use_ebpf;                    /* Use eBPF for execution counting */
+    u8  disable_regular_counter;     /* Disable regular execution counting */
+    u64 ebpf_execs;                  /* Execution count from eBPF */
+    u64 ebpf_mode;                   /* eBPF mode (perf or execve) */
   #endif
 
   afl_forkserver_t fsrv;

@@ -1,0 +1,54 @@
+struct exec_stats {
+  __u64 total_execs; // Counter for total executions tracked by eBPF
+};
+
+No hay que incluir nada aqui?
+
+
+
+Ok, do we need to update those variables? Show them along other metrics? The simplest change so that we can:
+1. test that eBPF is collecting the timing metrics
+2. compare the timing metrics when eBPF is enabled and when it is not enabled.
+
+
+timing and execs
+[+] Execution counts - No eBPF: 4713, With eBPF: 4693
+[+] Unique edges - No eBPF: 5, With eBPF: 5
+[+] Corpus size - No eBPF: 4, With eBPF: 4
+[+] Coverage - No eBPF: 35.71%, With eBPF: 35.71%
+[*] 1 test cases completed.
+[+] all test cases executed
+[+] all tests were successful :-)
+
+
+[+] Execution counts - No eBPF: 4951, With eBPF: 3861
+[+] Unique edges - No eBPF: 5, With eBPF: 5
+[+] Corpus size - No eBPF: 4, With eBPF: 4
+[+] Coverage - No eBPF: 35.71%, With eBPF: 35.71%
+[*] 1 test cases completed.
+[+] all test cases executed
+[+] all tests were successful :-)
+
+(stashed)
+
+execs
++] Execution counts - No eBPF: 5399, With eBPF: 5084
+[+] Unique edges - No eBPF: 5, With eBPF: 5
+[+] Corpus size - No eBPF: 4, With eBPF: 4
+[+] Coverage - No eBPF: 35.71%, With eBPF: 35.71%
+[*] 1 test cases completed.
+[+] all test cases executed
+[+] all tests were successful :-)
+
+
+[+] Execution counts - No eBPF: 4579, With eBPF: 4891
+[+] Unique edges - No eBPF: 5, With eBPF: 5
+[+] Corpus size - No eBPF: 4, With eBPF: 4
+[+] Coverage - No eBPF: 35.71%, With eBPF: 35.71%
+[*] 1 test cases completed.
+[+] all test cases executed
+[+] all tests were successful :-)
+
+
+
+

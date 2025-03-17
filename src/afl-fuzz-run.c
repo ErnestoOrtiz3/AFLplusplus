@@ -34,7 +34,9 @@
 
 #include "cmplog.h"
 #include "asanfuzz.h"
-
+#ifdef USE_EBPF
+#include "afl-ebpf.h"
+#endif
 #ifdef PROFILING
 u64 time_spent_working = 0;
 #endif
@@ -61,6 +63,23 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
 #endif
 
   fsrv_run_result_t res = afl_fsrv_run_target(fsrv, timeout, &afl->stop_soon);
+
+#ifdef USE_EBPF
+  // If eBPF is enabled and we have a valid context, attach to the target process
+  if (afl->use_ebpf && afl->ebpf_ctx && fsrv->child_pid > 0) {
+    static u8 attached = 0;
+    
+    // Only attach once to avoid overhead
+    if (!attached) {
+      if (afl_ebpf_attach_to_pid(afl->ebpf_ctx, fsrv->child_pid) == 0) {
+        attached = 1;
+        if (afl->debug) SAYF("[+] eBPF program attached to target process (PID: %d)\n", fsrv->child_pid);
+      } else {
+        if (afl->debug) SAYF("[-] Failed to attach eBPF program to target process\n");
+      }
+    }
+  }
+#endif
 
 #ifdef __AFL_CODE_COVERAGE
   if (unlikely(!fsrv->persistent_trace_bits)) {

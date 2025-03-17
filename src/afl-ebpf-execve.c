@@ -4,6 +4,7 @@
 #include <linux/types.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
+#include <linux/pid.h>
 
 // Required GPL license for eBPF programs
 char LICENSE[] SEC("license") = "GPL";
@@ -26,18 +27,33 @@ struct {
     __type(value, __u64);                // Value type: 64-bit unsigned int
 } exec_count SEC(".maps");               // Place in .maps section
 
+// Map to store fuzzer PID
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, pid_t);
+} fuzzer_pid SEC(".maps");
+
 // Attach to execve syscall entry point
 SEC("tracepoint/syscalls/sys_enter_execve")
-int trace_execve_enter(struct syscalls_enter_execve_args *ctx)  {
-    __u32 key = 0;                       // We only use index 0
+int trace_execve_enter(struct syscalls_enter_execve_args *ctx) {
+    __u32 key = 0;
     __u64 *count;
     
-    // Look up the counter in our map
-    count = bpf_map_lookup_elem(&exec_count, &key);
-    if (count) {
-        
-        // Atomically increment the counter
-        __sync_fetch_and_add(count, 1);
+    // Get current process's parent PID
+    pid_t ppid = bpf_get_current_task()->parent->tgid;
+    
+    // Get fuzzer PID from map
+    pid_t *fuzz_pid = bpf_map_lookup_elem(&fuzzer_pid, &key);
+    if (!fuzz_pid) return 0;
+    
+    // Only count executions where parent is the fuzzer
+    if (ppid == *fuzz_pid) {
+        count = bpf_map_lookup_elem(&exec_count, &key);
+        if (count) {
+            __sync_fetch_and_add(count, 1);
+        }
     }
     
     return 0;

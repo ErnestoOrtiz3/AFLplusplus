@@ -602,7 +602,12 @@ int main(int argc, char **argv_orig, char **envp) {
   afl_state_init(afl, map_size);
   afl->debug = debug;
   #ifdef USE_EBPF
-    afl->ebpf_ctx = afl_ebpf_init();
+    // We'll initialize ebpf_ctx after we have the target path
+    afl->ebpf_ctx = NULL;
+    afl->ebpf_execs = 0;  // Initialize execution counter
+    afl->use_ebpf = 0;  // Default to not using eBPF
+    afl->disable_regular_counter = 0;  // Default to using regular counter
+    afl->ebpf_mode = EBPF_MODE_PERF;  // Default to PERF counter mode
   #endif
   afl_fsrv_init(&afl->fsrv);
   if (debug) { afl->fsrv.debug = true; }
@@ -1998,6 +2003,29 @@ int main(int argc, char **argv_orig, char **envp) {
         ck_free(frida_binary);
 
         setenv("LD_PRELOAD", frida_afl_preload, 1);
+  
+        #ifdef USE_EBPF
+        // Initialize eBPF if enabled
+        if (afl->use_ebpf) {
+          // Set the eBPF mode in the environment for afl_ebpf_init to use
+          if (afl->ebpf_mode == EBPF_MODE_EXECVE) {
+            setenv("AFL_EBPF_MODE", "1", 1);  // EXECVE mode
+          } else {
+            setenv("AFL_EBPF_MODE", "0", 1);  // PERF mode (default)
+          }
+          
+          afl->ebpf_ctx = afl_ebpf_init(afl->fsrv.target_path);
+          if (!afl->ebpf_ctx) {
+            WARNF("Failed to initialize eBPF, falling back to regular counter");
+            afl->use_ebpf = 0;
+            afl->disable_regular_counter = 0;
+          } else {
+            OKF("eBPF execution counter initialized successfully (mode: %s)", 
+                afl->ebpf_mode == EBPF_MODE_EXECVE ? "EXECVE" : "PERF");
+          }
+        }
+        #endif
+  
   #ifdef __APPLE__
         setenv("DYLD_INSERT_LIBRARIES", frida_afl_preload, 1);
   #endif

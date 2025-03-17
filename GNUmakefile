@@ -64,7 +64,7 @@ ifeq "$(LIBBPF_AVAILABLE)" "1"
   LDFLAGS += $(LIBBPF_LDFLAGS)
 
 	# Add eBPF object and header as prerequisites for afl-fuzz
-	AFL_FUZZ_PREREQS = src/afl-ebpf-execve.o src/afl-ebpf-execve.skel.h
+	AFL_FUZZ_PREREQS = src/afl-ebpf-perf.o src/afl-ebpf-perf.skel.h src/afl-ebpf-execve.o src/afl-ebpf-execve.skel.h
 endif
 
 ifdef NO_UTF
@@ -231,27 +231,42 @@ ifdef USE_EBPF
   $(info Compiling with eBPF support)
   override CFLAGS += -DUSE_EBPF
   override LDFLAGS += -lbpf
-  BPF_SOURCES = src/afl-ebpf-execve.c
+  BPF_SOURCES = src/afl-ebpf-execve.c src/afl-ebpf-perf.c
   BPF_OBJECTS = $(BPF_SOURCES:.c=.o)
 endif
 
 # Rule to compile BPF programs
-src/afl-ebpf-execve.o: src/afl-ebpf-execve.c
-	clang -target bpf \
-		-D__KERNEL__ \
-		-D__TARGET_ARCH_x86 \
-		-I/usr/include/$(shell uname -m)-linux-gnu \
-		-I/usr/include/linux \
-		-I/usr/include/bpf \
-		-g -O2 -c $< -o $@ && \
-	llvm-strip -g $@
+src/afl-ebpf-perf.o: src/afl-ebpf-perf.c
+    clang -target bpf \
+        -D__KERNEL__ \
+        -D__TARGET_ARCH_x86 \
+        -I/usr/include/$(shell uname -m)-linux-gnu \
+        -I/usr/include/linux \
+        -I/usr/include/bpf \
+        -g -O2 -c $< -o $@ && \
+    llvm-strip -g $@
 
 # Rule to generate skeleton header
-src/afl-ebpf-execve.skel.h: src/afl-ebpf-execve.o
-	$(BPFTOOL) gen skeleton $< > $@
+src/afl-ebpf-perf.skel.h: src/afl-ebpf-perf.o
+    $(BPFTOOL) gen skeleton $< > $@
 
-# Add skeleton header as dependency
-src/afl-ebpf.o: src/afl-ebpf-execve.skel.h
+# Rule to compile BPF execve program
+src/afl-ebpf-execve.o: src/afl-ebpf-execve.c
+    clang -target bpf \
+        -D__KERNEL__ \
+        -D__TARGET_ARCH_x86 \
+        -I/usr/include/$(shell uname -m)-linux-gnu \
+        -I/usr/include/linux \
+        -I/usr/include/bpf \
+        -g -O2 -c $< -o $@ && \
+    llvm-strip -g $@
+
+# Rule to generate execve skeleton header
+src/afl-ebpf-execve.skel.h: src/afl-ebpf-execve.o
+    $(BPFTOOL) gen skeleton $< > $@
+
+# Update afl-ebpf.o dependencies to include both skeleton headers
+src/afl-ebpf.o: src/afl-ebpf-perf.skel.h src/afl-ebpf-execve.skel.h
 
 AFL_FUZZ_FILES = $(wildcard src/afl-fuzz*.c) src/afl-ebpf.c
 
@@ -537,7 +552,7 @@ src/afl-sharedmem.o : $(COMM_HDR) src/afl-sharedmem.c include/sharedmem.h
 	$(CC) $(CFLAGS) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) -c src/afl-sharedmem.c -o src/afl-sharedmem.o
 
 ifeq "$(LIBBPF_AVAILABLE)" "1"
-AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o src/afl-ebpf-execve.skel.h
+AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o src/afl-ebpf-perf.skel.h src/afl-ebpf-execve.skel.h
 else
 AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o
 endif
