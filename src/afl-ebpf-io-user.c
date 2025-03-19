@@ -28,12 +28,10 @@
 // Include the auto-generated skeleton header
 #include "afl-ebpf-io.skel.h"
 
-/* Structure to track memory allocation in shared memory */
-struct memory_block {
-  __u32 offset;
-  __u32 size;
-  bool in_use;
-};
+/* Define MAX_PATH_LEN if not already defined */
+#ifndef MAX_PATH_LEN
+#define MAX_PATH_LEN 256
+#endif
 
 /* Initialize eBPF file I/O optimization */
 struct afl_ebpf_io_ctx *afl_ebpf_io_init(void) {
@@ -51,7 +49,7 @@ struct afl_ebpf_io_ctx *afl_ebpf_io_init(void) {
   ctx->num_blocks = 0;
   
   /* Open BPF skeleton */
-  struct afl_ebpf_io_skel *skel = afl_ebpf_io__open();
+  struct afl_ebpf_io *skel = afl_ebpf_io__open();
   if (!skel) {
     PFATAL("Failed to open BPF skeleton");
     free(ctx);
@@ -223,7 +221,22 @@ int afl_ebpf_io_add_file(struct afl_ebpf_io_ctx *ctx, const char *filename,
       return 0;
     } else {
       // Need to remove the old entry first
-      bpf_map_delete_elem(ctx->files_map_fd, filename);
+      char key[256]; // Use 256 instead of MAX_PATH_LEN
+      strncpy(key, filename, sizeof(key) - 1);
+      key[sizeof(key) - 1] = '\0';
+      
+      bpf_map_delete_elem(ctx->files_map_fd, key);
+      
+      // Mark the old block as free
+      for (int i = 0; i < ctx->num_blocks; i++) {
+        if (ctx->memory_blocks[i].offset == file_data.offset) {
+          ctx->memory_blocks[i].in_use = false;
+          break;
+        }
+      }
+      
+      // Try to merge with adjacent free blocks
+      afl_ebpf_io_merge_free_blocks(ctx);
     }
   }
   

@@ -933,3 +933,8 @@ optimal values if not already present in the environment:
   - By default, `LD_BIND_NOW` is set to speed up fuzzing by forcing the linker
     to do all the work before the fork server kicks in. You can override this by
     setting `LD_BIND_LAZY` beforehand, but it is almost certainly pointless.
+
+  - `AFL_EBPF_IO` enables the eBPF I/O interception functionality. When set, AFL++ 
+    will use eBPF to intercept file operations, allowing for faster fuzzing by 
+    avoiding disk I/O. This can significantly improve performance for targets that 
+    read from files.

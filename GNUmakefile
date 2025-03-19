@@ -63,11 +63,10 @@ ifeq "$(LIBBPF_AVAILABLE)" "1"
   CFLAGS += -DUSE_EBPF $(LIBBPF_CFLAGS)
   LDFLAGS += $(LIBBPF_LDFLAGS)
 
-	# Add eBPF file I/O optimization support
-    ifdef USE_EBPF_IO
-        AFL_FUZZ_PREREQS = src/afl-ebpf-io.o src/afl-ebpf-io.skel.h
-        CFLAGS += -DUSE_EBPF_IO
-    endif
+  # Always enable eBPF I/O optimization when eBPF is available
+  # This simplifies the build by removing the need for USE_EBPF_IO flag
+  AFL_FUZZ_PREREQS = src/afl-ebpf-io-user.o
+  CFLAGS += -DUSE_EBPF_IO
 endif
 
 ifdef NO_UTF
@@ -242,25 +241,26 @@ ifdef USE_EBPF
   BPF_OBJECTS = $(BPF_SOURCES:.c=.o)
 endif
 
-# Rule to compile BPF I/O optimization program
+# Rule to generate the BPF object file
 src/afl-ebpf-io.o: src/afl-ebpf-io.c
-    clang -target bpf \
+	clang -target bpf \
         -D__KERNEL__ \
         -D__TARGET_ARCH_x86 \
-        -I/usr/include/$(shell uname -m)-linux-gnu \
+        -I/usr/include/x86_64-linux-gnu \
         -I/usr/include/linux \
         -I/usr/include/bpf \
-        -g -O2 -c $< -o $@ && \
-    llvm-strip -g $@
+        -g -O2 -c $< -o $@
+	llvm-strip -g $@
 
-# Rule to generate I/O skeleton header
-src/afl-ebpf-io.skel.h: src/afl-ebpf-io.o
-    $(BPFTOOL) gen skeleton $< > $@
+# Rule to generate the skeleton header
+include/afl-ebpf-io.skel.h: src/afl-ebpf-io.o
+	$(BPFTOOL) gen skeleton $< > $@
 
-# Update afl-ebpf.o dependencies to include both skeleton headers
-src/afl-ebpf.o: src/afl-ebpf-io.skel.h 
+# The userspace component depends on the skeleton header
+src/afl-ebpf-io-user.o: src/afl-ebpf-io-user.c include/afl-ebpf-io.skel.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
-AFL_FUZZ_FILES = $(wildcard src/afl-fuzz*.c) src/afl-ebpf.c
+AFL_FUZZ_FILES = $(wildcard src/afl-fuzz*.c) 
 
 ifneq "$(shell command -v python3m 2>/dev/null)" ""
   ifneq "$(shell command -v python3m-config 2>/dev/null)" ""
@@ -544,13 +544,13 @@ src/afl-sharedmem.o : $(COMM_HDR) src/afl-sharedmem.c include/sharedmem.h
 	$(CC) $(CFLAGS) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) -c src/afl-sharedmem.c -o src/afl-sharedmem.o
 
 ifeq "$(LIBBPF_AVAILABLE)" "1"
-AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o src/afl-ebpf-perf.skel.h src/afl-ebpf-execve.skel.h
+AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o 
 else
 AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o
 endif
 
-afl-fuzz: $(AFL_FUZZ_DEPS) | test_x86
-	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o -o $@ $(PYFLAGS) $(LDFLAGS) -lm
+afl-fuzz: $(AFL_FUZZ_DEPS) $(AFL_FUZZ_PREREQS) | test_x86
+	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o $(AFL_FUZZ_PREREQS) -o $@ $(PYFLAGS) $(LDFLAGS) -lm
 
 afl-showmap: src/afl-showmap.c src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) src/$@.c src/afl-fuzz-mutators.c src/afl-fuzz-python.c src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o -o $@ $(PYFLAGS) $(LDFLAGS)

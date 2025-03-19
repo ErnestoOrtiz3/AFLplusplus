@@ -606,7 +606,6 @@ int main(int argc, char **argv_orig, char **envp) {
   afl->debug = debug;
   #ifdef USE_EBPF
     afl->ebpf_io_ctx = NULL;
-    afl->use_ebpf = 0;  // Default to not using eBPF
   #endif
     
   afl_fsrv_init(&afl->fsrv);
@@ -2005,7 +2004,7 @@ int main(int argc, char **argv_orig, char **envp) {
         setenv("LD_PRELOAD", frida_afl_preload, 1);
         #ifdef USE_EBPF
         // Initialize eBPF if enabled
-          afl->ebpf_ctx = afl_ebpf_io_init();
+          afl->ebpf_io_ctx = afl_ebpf_io_init();
           if (!afl->ebpf_io_ctx) {
             WARNF("Failed to initialize eBPF");
           } 
@@ -3650,6 +3649,12 @@ stop_fuzzing:
   ck_free(afl->fsrv.out_file);
   ck_free(afl->sync_id);
   if (afl->q_testcase_cache) { ck_free(afl->q_testcase_cache); }
+  #ifdef USE_EBPF
+  if (afl->ebpf_io_ctx) {
+    afl_ebpf_io_deinit(afl->ebpf_io_ctx);
+    afl->ebpf_io_ctx = NULL;
+  }
+  #endif
   afl_state_deinit(afl);
   free(afl);                                                 /* not tracked */
 

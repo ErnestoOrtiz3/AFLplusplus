@@ -31,7 +31,9 @@
 #if !defined NAME_MAX
   #define NAME_MAX _XOPEN_NAME_MAX
 #endif
-
+#ifdef USE_EBPF
+#include "afl-ebpf-io.h"
+#endif
 #include "cmplog.h"
 #include "asanfuzz.h"
 
@@ -265,6 +267,15 @@ u32 __attribute__((hot)) write_to_testcase(afl_state_t *afl, void **mem,
 
   }
 
+#endif
+
+#ifdef USE_EBPF
+  if (afl->ebpf_io_ctx && afl->use_ebpf_io) {
+    // Add the test case file to eBPF interception
+    afl_ebpf_io_clear_files(afl->ebpf_io_ctx);
+    afl_ebpf_io_add_file(afl->ebpf_io_ctx, afl->fsrv.out_file, afl->out_buf, afl->queue_cur->len);
+    afl_ebpf_io_set_enabled(afl->ebpf_io_ctx, true);
+  }
 #endif
 
   return len;

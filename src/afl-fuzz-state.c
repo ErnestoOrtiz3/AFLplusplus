@@ -84,6 +84,7 @@ void afl_state_init(afl_state_t *afl, uint32_t map_size) {
   afl->shm.map_size = map_size ? map_size : MAP_SIZE;
   #ifdef USE_EBPF
     afl->ebpf_io_ctx = NULL;  /* Will be initialized later in main() */
+    afl->use_ebpf_io = 0;  /* Default to disabled */
   #endif
   afl->w_init = 0.9;
   afl->w_end = 0.3;
@@ -332,6 +333,15 @@ void read_afl_environment(afl_state_t *afl, char **envp) {
             afl->afl_env.afl_no_startup_calibration =
                 get_afl_env(afl_environment_variables[i]) ? 1 : 0;
 
+          #ifdef USE_EBPF
+          } else if (!strncmp(env, "AFL_EBPF_IO",
+                              afl_environment_variable_len)) {
+
+            afl->use_ebpf_io = get_afl_env(afl_environment_variables[i]) ? 1 : 0;
+            if (afl->use_ebpf_io) {
+              ACTF("Using eBPF I/O optimization");
+            }
+          #endif
           } else if (!strncmp(env, "AFL_NO_UI", afl_environment_variable_len)) {
 
             afl->afl_env.afl_no_ui =

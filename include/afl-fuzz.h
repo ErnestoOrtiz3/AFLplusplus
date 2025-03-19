@@ -492,7 +492,8 @@ typedef struct afl_state {
   /* Position of this state in the global states list */
   u32 _id;
   #ifdef USE_EBPF
-    struct afl_ebpf_io_ctx *ebpf_io_ctx;                                       
+    struct afl_ebpf_io_ctx *ebpf_io_ctx;  
+    u8 use_ebpf_io;  
   #endif
 
   afl_forkserver_t fsrv;

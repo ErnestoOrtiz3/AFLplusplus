@@ -21,8 +21,10 @@
 #include <linux/bpf.h>
 #include <sys/types.h>
 
+#include "afl-ebpf-io.skel.h"
+
 // Forward declaration for skeleton structure
-struct afl_ebpf_io_skel;
+struct afl_ebpf_io;  // Changed from struct afl_ebpf_io_skel
 
 /* Maximum size of shared memory for file contents */
 #define EBPF_IO_MAX_FILE_SIZE (1 << 20)  // 1MB default
@@ -39,7 +41,7 @@ struct memory_block {
 
 /* Context for eBPF file I/O optimization */
 struct afl_ebpf_io_ctx {
-  struct afl_ebpf_io_skel *skel;  /* BPF skeleton */
+  struct afl_ebpf_io *skel;  /* BPF skeleton - changed type */
   int files_map_fd;               /* File descriptor for files map */
   int config_map_fd;              /* File descriptor for config map */
   int shm_id;                     /* Shared memory ID */

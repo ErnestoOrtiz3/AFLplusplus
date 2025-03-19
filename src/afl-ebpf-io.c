@@ -9,6 +9,34 @@
 #include <string.h>
 #include <linux/types.h>
 
+/* Define trace event structures if not available */
+#ifndef TRACE_EVENT_RAW_SYS_ENTER_DEFINED
+struct trace_event_raw_sys_enter {
+  unsigned long long unused;
+  long syscall_nr;
+  unsigned long args[6];
+};
+#define TRACE_EVENT_RAW_SYS_ENTER_DEFINED
+#endif
+
+#ifndef TRACE_EVENT_RAW_SYS_EXIT_DEFINED
+struct trace_event_raw_sys_exit {
+  unsigned long long unused;
+  long syscall_nr;
+  long ret;
+};
+#define TRACE_EVENT_RAW_SYS_EXIT_DEFINED
+#endif
+
+/* Define size_t for eBPF context */
+#ifndef size_t
+typedef __kernel_size_t size_t;
+#endif
+
+#ifndef ssize_t
+typedef __kernel_ssize_t ssize_t;
+#endif
+
 /* Maximum path length for file operations */
 #define MAX_PATH_LEN 256
 
@@ -64,7 +92,7 @@ struct {
 struct {
   __uint(type, BPF_MAP_TYPE_HASH);
   __uint(max_entries, 1024);
-  __type(key, u32);  /* thread ID */
+  __type(key, __u32);  /* thread ID */
   __type(value, struct {
     void *buf;
     size_t count;
@@ -83,6 +111,14 @@ struct {
   });
 } shm_info SEC(".maps");
 
+/* Map for temporary filename storage */
+struct {
+  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+  __uint(max_entries, 1);
+  __type(key, __u32);
+  __type(value, char[MAX_PATH_LEN]);
+} filename_map SEC(".maps");
+
 /* Helper function to check if a file should be intercepted */
 static inline int should_intercept(const char *filename, struct file_data *data) {
   /* Check if interception is enabled */
@@ -92,20 +128,37 @@ static inline int should_intercept(const char *filename, struct file_data *data)
     return 0;
   
   /* Look up the file in our map */
-  return bpf_map_lookup_elem(&files, filename, data) == 0;
+  struct file_data *found = bpf_map_lookup_elem(&files, filename);
+  if (found) {
+    /* Copy the data to the output parameter if provided */
+    if (data) {
+      data->size = found->size;
+      data->offset = found->offset;
+      data->in_use = found->in_use;
+      /* Copy path in small chunks to avoid stack usage */
+      for (int i = 0; i < MAX_PATH_LEN; i += 8) {
+        __builtin_memcpy(&data->path[i], &found->path[i], 
+                         (i + 8 <= MAX_PATH_LEN) ? 8 : (MAX_PATH_LEN - i));
+      }
+    }
+    return 1;
+  }
+  return 0;
 }
 
 /* Attach to open syscall */
 SEC("tracepoint/syscalls/sys_enter_open")
 int trace_open_enter(struct trace_event_raw_sys_enter *ctx) {
-  char filename[MAX_PATH_LEN];
-  struct file_data data;
+  __u32 key = 0;
+  char *filename = bpf_map_lookup_elem(&filename_map, &key);
+  if (!filename)
+    return 0;
   
   /* Get filename from syscall arguments */
-  bpf_probe_read_user_str(filename, sizeof(filename), (const char *)ctx->args[0]);
+  bpf_probe_read_user_str(filename, MAX_PATH_LEN, (const char *)ctx->args[0]);
   
   /* Check if we should intercept this file */
-  if (should_intercept(filename, &data)) {
+  if (should_intercept(filename, NULL)) {
     /* We'll handle this in the return probe */
     bpf_printk("Intercepting open for file: %s\n", filename);
   }
@@ -116,11 +169,15 @@ int trace_open_enter(struct trace_event_raw_sys_enter *ctx) {
 /* Attach to openat syscall (more commonly used than open) */
 SEC("tracepoint/syscalls/sys_enter_openat")
 int trace_openat_enter(struct trace_event_raw_sys_enter *ctx) {
-  char filename[MAX_PATH_LEN];
-  struct file_data data;
+  __u32 key = 0;
+  char *filename = bpf_map_lookup_elem(&filename_map, &key);
+  if (!filename)
+    return 0;
   
   /* Get filename from syscall arguments */
-  bpf_probe_read_user_str(filename, sizeof(filename), (const char *)ctx->args[1]);
+  bpf_probe_read_user_str(filename, MAX_PATH_LEN, (const char *)ctx->args[1]);
+  
+  struct file_data data = {0};
   
   /* Check if we should intercept this file */
   if (should_intercept(filename, &data)) {
@@ -136,15 +193,15 @@ int trace_openat_enter(struct trace_event_raw_sys_enter *ctx) {
 
 /* Attach to openat syscall return */
 SEC("tracepoint/syscalls/sys_exit_openat")
-int trace_openat_exit(struct trace_event_raw_sys_exit *ctx) {
-  int fd = ctx->ret;
+int trace_openat_exit(void *ctx) {
+  int fd = ((struct trace_event_raw_sys_exit *)ctx)->ret;
   
   /* Only process successful opens */
   if (fd < 0)
     return 0;
   
   /* Get thread ID to look up file data */
-  u32 tid = bpf_get_current_pid_tgid();
+  __u32 tid = bpf_get_current_pid_tgid();
   
   /* Check if this is a file we want to intercept */
   struct file_data *data = bpf_map_lookup_elem(&temp_files, &tid);
@@ -164,7 +221,7 @@ int trace_openat_exit(struct trace_event_raw_sys_exit *ctx) {
 /* Attach to read syscall */
 SEC("tracepoint/syscalls/sys_enter_read")
 int trace_read_enter(struct trace_event_raw_sys_enter *ctx) {
-  int fd = (int)ctx->args[0];
+  int fd = ctx->args[0];
   void *buf = (void *)ctx->args[1];
   size_t count = (size_t)ctx->args[2];
   
@@ -185,7 +242,7 @@ int trace_read_enter(struct trace_event_raw_sys_enter *ctx) {
   read_info.count = count;
   read_info.data = data;
   
-  u32 tid = bpf_get_current_pid_tgid();
+  __u32 tid = bpf_get_current_pid_tgid();
   bpf_map_update_elem(&temp_reads, &tid, &read_info, BPF_ANY);
   
   bpf_printk("Intercepting read on fd %d\n", fd);
@@ -195,15 +252,15 @@ int trace_read_enter(struct trace_event_raw_sys_enter *ctx) {
 
 /* Attach to read syscall return */
 SEC("tracepoint/syscalls/sys_exit_read")
-int trace_read_exit(struct trace_event_raw_sys_exit *ctx) {
-  ssize_t ret = ctx->ret;
+int trace_read_exit(void *ctx) {
+  ssize_t ret = ((struct trace_event_raw_sys_exit *)ctx)->ret;
   
   /* Only process successful reads */
   if (ret <= 0)
     return 0;
   
   /* Get thread ID to look up read info */
-  u32 tid = bpf_get_current_pid_tgid();
+  __u32 tid = bpf_get_current_pid_tgid();
   
   /* Check if this is a read we want to intercept */
   struct {
@@ -214,7 +271,7 @@ int trace_read_exit(struct trace_event_raw_sys_exit *ctx) {
   
   if (read_info) {
     /* Get configuration */
-    u32 key = 0;
+    __u32 key = 0;
     struct config *cfg = bpf_map_lookup_elem(&config, &key);
     if (!cfg) {
       goto cleanup;

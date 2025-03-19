@@ -561,5 +561,11 @@
 
 #define AFL_TXT_STRING_MAX_MUTATIONS 6
 
+/* Define if you have eBPF support */
+#define USE_EBPF 1
+
+/* Define if you have eBPF I/O optimization */
+#define USE_EBPF_IO 1
+
 #endif                                                  /* ! _HAVE_CONFIG_H */
 
