@@ -17,6 +17,7 @@
 #TEST_MMAP=1
 # the hash character is treated differently in different make versions
 # so use a variable for '#'
+.DEFAULT_GOAL := all
 HASH=\#
 
 PREFIX      ?= /usr/local
@@ -40,6 +41,34 @@ SYS = $(shell uname -s)
 ARCH = $(shell uname -m)
 
 $(info [*] Compiling AFL++ for OS $(SYS) on ARCH $(ARCH))
+
+# eBPF support
+LIBBPF_AVAILABLE:= $(shell pkg-config --exists libbpf && echo 1 || echo 0)
+
+ifeq "$(LIBBPF_AVAILABLE)" "1"
+  LIBBPF_CFLAGS := $(shell pkg-config --cflags libbpf)
+  LIBBPF_LDFLAGS := $(shell pkg-config --libs libbpf)
+endif
+
+# Allow explicit disable of eBPF support
+ifneq "$(NO_EBPF)" ""
+  LIBBPF_AVAILABLE = 0
+endif
+
+ifeq "$(LIBBPF_AVAILABLE)" "1"
+	BPFTOOL := $(shell which bpftool 2>/dev/null)
+	ifndef BPFTOOL
+		$(error bpftool not found. Please install bpftool to enable eBPF support)
+	endif
+  CFLAGS += -DUSE_EBPF $(LIBBPF_CFLAGS)
+  LDFLAGS += $(LIBBPF_LDFLAGS)
+
+	# Add eBPF file I/O optimization support
+    ifdef USE_EBPF_IO
+        AFL_FUZZ_PREREQS = src/afl-ebpf-io.o src/afl-ebpf-io.skel.h
+        CFLAGS += -DUSE_EBPF_IO
+    endif
+endif
 
 ifdef NO_UTF
   override CFLAGS_OPT += -DFANCY_BOXES_NO_UTF
@@ -68,11 +97,6 @@ endif
 
 ifdef CODE_COVERAGE
   override CFLAGS += -D__AFL_CODE_COVERAGE=1
-endif
-
-IS_IOS:=$(findstring ios, $(shell $(CC) --version 2>/dev/null))
-ifdef IS_IOS
-  override CFLAGS += -DTARGET_OS_IPHONE -DTARGET_OS_IOS -isysroot $(IOS_SDK_PATH)
 endif
 
 ifeq "$(findstring android, $(shell $(CC) --version 2>/dev/null))" ""
@@ -106,19 +130,17 @@ else
   SPECIAL_PERFORMANCE :=
 endif
 
-ifndef IS_IOS
-  ifneq "$(SYS)" "Darwin"
-   #ifeq "$(HAVE_MARCHNATIVE)" "1"
-   #  SPECIAL_PERFORMANCE += -march=native
-   #endif
-   #ifndef DEBUG
-   #  override CFLAGS_OPT += -D_FORTIFY_SOURCE=1
-   #endif
-  else
-    # On some odd MacOS system configurations, the Xcode sdk path is not set correctly
-    SDK_LD = -L$(shell xcrun --show-sdk-path)/usr/lib
-    override LDFLAGS += $(SDK_LD)
-  endif
+ifneq "$(SYS)" "Darwin"
+ #ifeq "$(HAVE_MARCHNATIVE)" "1"
+ #  SPECIAL_PERFORMANCE += -march=native
+ #endif
+ #ifndef DEBUG
+ #  override CFLAGS_OPT += -D_FORTIFY_SOURCE=1
+ #endif
+else
+  # On some odd MacOS system configurations, the Xcode sdk path is not set correctly
+  SDK_LD = -L$(shell xcrun --show-sdk-path)/usr/lib
+  override LDFLAGS += $(SDK_LD)
 endif
 
 COMPILER_TYPE=$(shell $(CC) --version|grep "Free Software Foundation")
@@ -202,7 +224,43 @@ ifeq "$(SYS)" "Haiku"
   #SPECIAL_PERFORMANCE += -DUSEMMAP=1
 endif
 
-AFL_FUZZ_FILES = $(wildcard src/afl-fuzz*.c)
+# Add bpftool detection
+BPFTOOL := $(shell which bpftool 2>/dev/null)
+
+ifdef USE_EBPF
+ ifndef BPFTOOL
+   $(error bpftool not found. Please install bpftool to enable eBPF support)
+ endif
+  $(info Compiling with eBPF support)
+  override CFLAGS += -DUSE_EBPF
+  override LDFLAGS += -lbpf
+  ifdef USE_EBPF_IO
+    $(info Compiling with eBPF I/O optimization)
+    override CFLAGS += -DUSE_EBPF_IO
+    BPF_SOURCES += src/afl-ebpf-io.c
+  endif
+  BPF_OBJECTS = $(BPF_SOURCES:.c=.o)
+endif
+
+# Rule to compile BPF I/O optimization program
+src/afl-ebpf-io.o: src/afl-ebpf-io.c
+    clang -target bpf \
+        -D__KERNEL__ \
+        -D__TARGET_ARCH_x86 \
+        -I/usr/include/$(shell uname -m)-linux-gnu \
+        -I/usr/include/linux \
+        -I/usr/include/bpf \
+        -g -O2 -c $< -o $@ && \
+    llvm-strip -g $@
+
+# Rule to generate I/O skeleton header
+src/afl-ebpf-io.skel.h: src/afl-ebpf-io.o
+    $(BPFTOOL) gen skeleton $< > $@
+
+# Update afl-ebpf.o dependencies to include both skeleton headers
+src/afl-ebpf.o: src/afl-ebpf-io.skel.h 
+
+AFL_FUZZ_FILES = $(wildcard src/afl-fuzz*.c) src/afl-ebpf.c
 
 ifneq "$(shell command -v python3m 2>/dev/null)" ""
   ifneq "$(shell command -v python3m-config 2>/dev/null)" ""
@@ -340,6 +398,7 @@ all:	test_x86 test_shm test_python ready $(PROGS) llvm gcc_plugin test_build all
 	@echo
 	@echo Build Summary:
 	@test -e afl-fuzz && echo "[+] afl-fuzz and supporting tools successfully built" || echo "[-] afl-fuzz could not be built, please set CC to a working compiler"
+	@test "$(LIBBPF_AVAILABLE)" = "1" && echo "[+] eBPF support enabled" || echo "[-] eBPF support not available"
 	@test -e afl-llvm-pass.so && echo "[+] LLVM basic mode successfully built" || echo "[-] LLVM mode could not be built, please install at least llvm-11 and clang-11 or newer, see docs/INSTALL.md"
 	@test -e SanitizerCoveragePCGUARD.so && echo "[+] LLVM mode successfully built" || echo "[-] LLVM mode could not be built, please install at least llvm-13 and clang-13 or newer, see docs/INSTALL.md"
 	@test -e SanitizerCoverageLTO.so && echo "[+] LLVM LTO mode successfully built" || echo "[-] LLVM LTO mode could not be built, it is optional, if you want it, please install LLVM and LLD 11+. More information at instrumentation/README.lto.md on how to build it"
@@ -484,35 +543,26 @@ src/afl-forkserver.o : $(COMM_HDR) src/afl-forkserver.c include/forkserver.h
 src/afl-sharedmem.o : $(COMM_HDR) src/afl-sharedmem.c include/sharedmem.h
 	$(CC) $(CFLAGS) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) -c src/afl-sharedmem.c -o src/afl-sharedmem.o
 
-afl-fuzz: $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o | test_x86
-	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o -o $@ $(PYFLAGS) $(LDFLAGS) -lm
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
+ifeq "$(LIBBPF_AVAILABLE)" "1"
+AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o src/afl-ebpf-perf.skel.h src/afl-ebpf-execve.skel.h
+else
+AFL_FUZZ_DEPS = $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o
 endif
+
+afl-fuzz: $(AFL_FUZZ_DEPS) | test_x86
+	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o -o $@ $(PYFLAGS) $(LDFLAGS) -lm
 
 afl-showmap: src/afl-showmap.c src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) src/$@.c src/afl-fuzz-mutators.c src/afl-fuzz-python.c src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o -o $@ $(PYFLAGS) $(LDFLAGS)
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 afl-tmin: src/afl-tmin.c src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) src/$@.c src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.o src/afl-performance.o -o $@ $(LDFLAGS)
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 afl-analyze: src/afl-analyze.c src/afl-common.o src/afl-sharedmem.o src/afl-performance.o src/afl-forkserver.o $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) src/$@.c src/afl-common.o src/afl-sharedmem.o src/afl-performance.o src/afl-forkserver.o -o $@ $(LDFLAGS)
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 afl-gotcpu: src/afl-gotcpu.c src/afl-common.o $(COMM_HDR) | test_x86
 	$(CC) $(CFLAGS) $(COMPILE_STATIC) $(CFLAGS_FLTO) $(SPECIAL_PERFORMANCE) src/$@.c src/afl-common.o -o $@ $(LDFLAGS)
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 .PHONY: document
 document:	afl-fuzz-document
@@ -520,9 +570,6 @@ document:	afl-fuzz-document
 # document all mutations and only do one run (use with only one input file!)
 afl-fuzz-document: $(COMM_HDR) include/afl-fuzz.h $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-performance.o | test_x86
 	$(CC) -D_DEBUG=\"1\" -D_AFL_DOCUMENT_MUTATIONS $(CFLAGS) $(CFLAGS_FLTO) $(AFL_FUZZ_FILES) src/afl-common.o src/afl-sharedmem.o src/afl-forkserver.c src/afl-performance.o -o afl-fuzz-document $(PYFLAGS) $(LDFLAGS)
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 test/unittests/unit_maybe_alloc.o : $(COMM_HDR) include/alloc-inl.h test/unittests/unit_maybe_alloc.c $(AFL_FUZZ_FILES)
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) -c test/unittests/unit_maybe_alloc.c -o test/unittests/unit_maybe_alloc.o
@@ -530,9 +577,6 @@ test/unittests/unit_maybe_alloc.o : $(COMM_HDR) include/alloc-inl.h test/unittes
 unit_maybe_alloc: test/unittests/unit_maybe_alloc.o
 	@$(CC) $(CFLAGS) -Wl,--wrap=exit -Wl,--wrap=printf test/unittests/unit_maybe_alloc.o -o test/unittests/unit_maybe_alloc $(LDFLAGS) $(ASAN_LDFLAGS) -lcmocka
 	./test/unittests/unit_maybe_alloc
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 test/unittests/unit_hash.o : $(COMM_HDR) include/alloc-inl.h test/unittests/unit_hash.c $(AFL_FUZZ_FILES) src/afl-performance.o
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) $(SPECIAL_PERFORMANCE) -c test/unittests/unit_hash.c -o test/unittests/unit_hash.o
@@ -540,9 +584,6 @@ test/unittests/unit_hash.o : $(COMM_HDR) include/alloc-inl.h test/unittests/unit
 unit_hash: test/unittests/unit_hash.o src/afl-performance.o
 	@$(CC) $(CFLAGS) $(SPECIAL_PERFORMANCE) -Wl,--wrap=exit -Wl,--wrap=printf $^ -o test/unittests/unit_hash $(LDFLAGS) $(ASAN_LDFLAGS) -lcmocka
 	./test/unittests/unit_hash
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 test/unittests/unit_rand.o : $(COMM_HDR) include/alloc-inl.h test/unittests/unit_rand.c $(AFL_FUZZ_FILES) src/afl-performance.o
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) $(SPECIAL_PERFORMANCE) -c test/unittests/unit_rand.c -o test/unittests/unit_rand.o
@@ -550,9 +591,6 @@ test/unittests/unit_rand.o : $(COMM_HDR) include/alloc-inl.h test/unittests/unit
 unit_rand: test/unittests/unit_rand.o src/afl-common.o src/afl-performance.o
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) $(SPECIAL_PERFORMANCE) -Wl,--wrap=exit -Wl,--wrap=printf $^ -o test/unittests/unit_rand  $(LDFLAGS) $(ASAN_LDFLAGS) -lcmocka
 	./test/unittests/unit_rand
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 test/unittests/unit_list.o : $(COMM_HDR) include/list.h test/unittests/unit_list.c $(AFL_FUZZ_FILES)
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) -c test/unittests/unit_list.c -o test/unittests/unit_list.o
@@ -560,9 +598,6 @@ test/unittests/unit_list.o : $(COMM_HDR) include/list.h test/unittests/unit_list
 unit_list: test/unittests/unit_list.o
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) -Wl,--wrap=exit -Wl,--wrap=printf test/unittests/unit_list.o -o test/unittests/unit_list  $(LDFLAGS) $(ASAN_LDFLAGS) -lcmocka
 	./test/unittests/unit_list
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 test/unittests/unit_preallocable.o : $(COMM_HDR) include/alloc-inl.h test/unittests/unit_preallocable.c $(AFL_FUZZ_FILES)
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) -c test/unittests/unit_preallocable.c -o test/unittests/unit_preallocable.o
@@ -570,9 +605,6 @@ test/unittests/unit_preallocable.o : $(COMM_HDR) include/alloc-inl.h test/unitte
 unit_preallocable: test/unittests/unit_preallocable.o
 	@$(CC) $(CFLAGS) $(ASAN_CFLAGS) -Wl,--wrap=exit -Wl,--wrap=printf test/unittests/unit_preallocable.o -o test/unittests/unit_preallocable $(LDFLAGS) $(ASAN_LDFLAGS) -lcmocka
 	./test/unittests/unit_preallocable
-ifdef IS_IOS
-	@ldid -Sentitlements.plist $@ && echo "[+] Signed $@" || { echo "[-] Failed to sign $@"; }
-endif
 
 .PHONY: unit_clean
 unit_clean:
@@ -651,6 +683,9 @@ all_done: test_build
 
 .PHONY: clean
 clean:
+	rm -rf $(BUILD_DIR)
+	rm -f $(BPF_OBJECTS)
+	rm -f src/afl-ebpf-execve.skel.h
 	rm -rf $(PROGS) afl-fuzz-document as afl-as afl-g++ afl-clang afl-clang++ *.o src/*.o *~ a.out core core.[1-9][0-9]* *.stackdump .test .test1 .test2 test-instr .test-instr0 .test-instr1 afl-cs-proxy afl-qemu-trace afl-gcc-fast afl-g++-fast ld *.so *.8 test/unittests/*.o test/unittests/unit_maybe_alloc test/unittests/preallocable .afl-* afl-gcc afl-g++ afl-clang afl-clang++ test/unittests/unit_hash test/unittests/unit_rand *.dSYM lib*.a
 	-$(MAKE) -f GNUmakefile.llvm clean
 	-$(MAKE) -f GNUmakefile.gcc_plugin clean

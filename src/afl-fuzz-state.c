@@ -27,7 +27,9 @@
 #include <limits.h>
 #include "afl-fuzz.h"
 #include "envs.h"
-
+#ifdef USE_EBPF
+#include "afl-ebpf-io.h"
+#endif
 char *power_names[POWER_SCHEDULES_NUM] = {"explore", "mmopt", "exploit",
                                           "fast",    "coe",   "lin",
                                           "quad",    "rare",  "seek"};
@@ -80,7 +82,9 @@ void afl_state_init(afl_state_t *afl, uint32_t map_size) {
   memset(afl, 0, sizeof(afl_state_t));
 
   afl->shm.map_size = map_size ? map_size : MAP_SIZE;
-
+  #ifdef USE_EBPF
+    afl->ebpf_io_ctx = NULL;  /* Will be initialized later in main() */
+  #endif
   afl->w_init = 0.9;
   afl->w_end = 0.3;
   afl->g_max = 5000;

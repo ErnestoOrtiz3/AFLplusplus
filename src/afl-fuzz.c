@@ -25,6 +25,12 @@
  */
 
 #include "afl-fuzz.h"
+#ifdef USE_EBPF
+#include "afl-ebpf-io.h"
+#ifdef USE_EBPF_IO
+#include "afl-ebpf-io.h"
+#endif
+#endif
 #include "alloc-inl.h"
 #include "cmplog.h"
 #include "asanfuzz.h"
@@ -598,6 +604,11 @@ int main(int argc, char **argv_orig, char **envp) {
 
   afl_state_init(afl, map_size);
   afl->debug = debug;
+  #ifdef USE_EBPF
+    afl->ebpf_io_ctx = NULL;
+    afl->use_ebpf = 0;  // Default to not using eBPF
+  #endif
+    
   afl_fsrv_init(&afl->fsrv);
   if (debug) { afl->fsrv.debug = true; }
   read_afl_environment(afl, envp);
@@ -1992,7 +2003,15 @@ int main(int argc, char **argv_orig, char **envp) {
         ck_free(frida_binary);
 
         setenv("LD_PRELOAD", frida_afl_preload, 1);
-  #ifdef __APPLE__
+        #ifdef USE_EBPF
+        // Initialize eBPF if enabled
+          afl->ebpf_ctx = afl_ebpf_io_init();
+          if (!afl->ebpf_io_ctx) {
+            WARNF("Failed to initialize eBPF");
+          } 
+      #endif
+
+        #ifdef __APPLE__
         setenv("DYLD_INSERT_LIBRARIES", frida_afl_preload, 1);
   #endif
 
