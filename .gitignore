@@ -114,3 +114,10 @@ utils/plot_ui/afl-plot-ui
 vuln_prog
 argv_fuzz_demo
 argv_fuzz_persistent_demo
+
+# Test output files
+test/test-map.txt
+test/test-showmap.log
+test/test-ebpf
+test/test-ebpf.c
+test/test-ebpf-dir/
