@@ -2413,27 +2413,42 @@ void setup_cmdline_file(afl_state_t *afl, char **argv) {
 void setup_stdio_file(afl_state_t *afl) {
 
   if (afl->file_extension) {
-
     afl->fsrv.out_file =
         alloc_printf("%s/.cur_input.%s", afl->tmp_dir, afl->file_extension);
-
   } else {
-
     afl->fsrv.out_file = alloc_printf("%s/.cur_input", afl->tmp_dir);
-
   }
 
   unlink(afl->fsrv.out_file);                              /* Ignore errors */
 
+#ifdef USE_EBPF
+  if (afl->use_ebpf_io) {
+    // For eBPF I/O mode, we don't need to create the actual file
+    // Just register the path with eBPF subsystem
+    if (afl->ebpf_io_ctx) {
+      // Register the virtual file path with eBPF
+      afl_ebpf_io_add_file(afl->ebpf_io_ctx, afl->fsrv.out_file, NULL, 0);
+      
+      // Use a dummy file descriptor that won't be used for actual I/O
+      // We still need a valid fd for AFL++ internal tracking
+      afl->fsrv.out_fd = open("/dev/null", O_WRONLY);
+      
+      if (afl->fsrv.out_fd < 0) {
+        PFATAL("Unable to open /dev/null");
+      }
+      
+      return;
+    }
+  }
+#endif
+
+  // Original code for non-eBPF mode
   afl->fsrv.out_fd =
       open(afl->fsrv.out_file, O_RDWR | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
 
   if (afl->fsrv.out_fd < 0) {
-
     PFATAL("Unable to create '%s'", afl->fsrv.out_file);
-
   }
-
 }
 
 /* Make sure that core dumps don't go to a program. */
@@ -2455,8 +2470,7 @@ void check_crash_handling(void) {
   SAYF(
       "\n" cLRD "[-] " cRST
       "Whoops, your system is configured to forward crash notifications to an\n"
-      "    external crash reporting utility. This will cause issues due to "
-      "the\n"
+      "    external crash reporting utility. This will cause issues due to the\n"
       "    extended delay between the fuzzed binary malfunctioning and this "
       "fact\n"
       "    being relayed to the fuzzer via the standard waitpid() API.\n\n"

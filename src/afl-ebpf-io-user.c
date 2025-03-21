@@ -166,23 +166,38 @@ struct afl_ebpf_io_ctx *afl_ebpf_io_init(void) {
 void afl_ebpf_io_deinit(struct afl_ebpf_io_ctx *ctx) {
   if (!ctx) return;
   
-  /* Free memory blocks */
-  if (ctx->memory_blocks) {
-    free(ctx->memory_blocks);
-  }
+  /* Disable eBPF interception */
+  afl_ebpf_io_set_enabled(ctx, false);
   
-  /* Detach from shared memory */
-  if (ctx->shm_data) {
-    shmdt(ctx->shm_data);
-    shmctl(ctx->shm_id, IPC_RMID, NULL);
-  }
+  /* Clear all registered files */
+  afl_ebpf_io_clear_files(ctx);
   
   /* Clean up BPF resources */
   if (ctx->skel) {
     afl_ebpf_io__destroy(ctx->skel);
+    ctx->skel = NULL;
   }
   
+  /* Clean up shared memory */
+  if (ctx->shm_data != (void *)-1) {
+    shmdt(ctx->shm_data);
+    ctx->shm_data = (void *)-1;
+  }
+  
+  if (ctx->shm_id >= 0) {
+    shmctl(ctx->shm_id, IPC_RMID, NULL);
+    ctx->shm_id = -1;
+  }
+  
+  /* Free memory blocks */
+  if (ctx->memory_blocks) {
+    free(ctx->memory_blocks);
+    ctx->memory_blocks = NULL;
+  }
+  
+  /* Free context */
   free(ctx);
+  
   ACTF("eBPF file I/O optimization cleaned up");
 }
 

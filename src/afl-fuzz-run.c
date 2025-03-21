@@ -62,7 +62,22 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
 
 #endif
 
+#ifdef USE_EBPF
+  // Ensure eBPF I/O is enabled before each run if we're using it
+  if (afl->ebpf_io_ctx && afl->use_ebpf_io) {
+    afl_ebpf_io_set_enabled(afl->ebpf_io_ctx, true);
+  }
+#endif
+
   fsrv_run_result_t res = afl_fsrv_run_target(fsrv, timeout, &afl->stop_soon);
+
+#ifdef USE_EBPF
+  // Disable eBPF I/O after each run to prevent interference
+  if (afl->ebpf_io_ctx && afl->use_ebpf_io && afl->stop_soon) {
+    afl_ebpf_io_set_enabled(afl->ebpf_io_ctx, false);
+    afl_ebpf_io_clear_files(afl->ebpf_io_ctx);
+  }
+#endif
 
 #ifdef __AFL_CODE_COVERAGE
   if (unlikely(!fsrv->persistent_trace_bits)) {
@@ -118,31 +133,35 @@ fsrv_run_result_t __attribute__((hot)) fuzz_run_target(afl_state_t      *afl,
 u32 __attribute__((hot)) write_to_testcase(afl_state_t *afl, void **mem,
                                            u32 len, u32 fix) {
 
-  u8 sent = 0;
-
   if (unlikely(afl->custom_mutators_count)) {
 
-    ssize_t new_size = len;
-    u8     *new_mem = *mem;
-    u8     *new_buf = NULL;
+    u8 *new_mem = NULL;
+    u8  new_buf[len];
+    s32 new_len = 0;
 
     LIST_FOREACH(&afl->custom_mutator_list, struct custom_mutator, {
 
-      if (el->afl_custom_post_process) {
+      if (likely(el->afl_custom_post_process)) {
 
-        new_size =
-            el->afl_custom_post_process(el->data, new_mem, new_size, &new_buf);
+        new_len = el->afl_custom_post_process(el->data, *mem, len, new_buf);
 
-        if (unlikely(!new_buf || new_size <= 0)) {
+        if (unlikely(new_len <= 0)) {
 
-          new_size = 0;
-          new_buf = new_mem;
-          // FATAL("Custom_post_process failed (ret: %lu)", (long
-          // unsigned)new_size);
+          new_len = len;
+          *mem = *mem;
 
         } else {
 
-          new_mem = new_buf;
+          if (unlikely(!new_mem)) {
+
+            new_mem = afl_realloc(AFL_BUF_PARAM(out), new_len);
+            if (unlikely(!new_mem)) { PFATAL("alloc"); }
+
+          }
+
+          memcpy(new_mem, new_buf, new_len);
+          *mem = new_mem;
+          len = new_len;
 
         }
 
@@ -150,133 +169,98 @@ u32 __attribute__((hot)) write_to_testcase(afl_state_t *afl, void **mem,
 
     });
 
-    if (unlikely(!new_size)) {
-
-      // perform dummy runs (fix = 1), but skip all others
-      if (fix) {
-
-        new_size = len;
-
-      } else {
-
-        return 0;
-
-      }
-
-    }
-
-    if (unlikely(new_size < afl->min_length && !fix)) {
-
-      new_size = afl->min_length;
-
-    } else if (unlikely(new_size > afl->max_length)) {
-
-      new_size = afl->max_length;
-
-    }
-
-    if (new_mem != *mem && new_mem != NULL && new_size > 0) {
-
-      new_buf = afl_realloc(AFL_BUF_PARAM(out_scratch), new_size);
-      if (unlikely(!new_buf)) { PFATAL("alloc"); }
-      memcpy(new_buf, new_mem, new_size);
-
-      /* if AFL_POST_PROCESS_KEEP_ORIGINAL is set then save the original memory
-         prior post-processing in new_mem to restore it later */
-      if (unlikely(afl->afl_env.afl_post_process_keep_original)) {
-
-        new_mem = *mem;
-
-      }
-
-      *mem = new_buf;
-      afl_swap_bufs(AFL_BUF_PARAM(out), AFL_BUF_PARAM(out_scratch));
-
-    }
-
-    LIST_FOREACH(&afl->custom_mutator_list, struct custom_mutator, {
-
-      if (el->afl_custom_fuzz_send) {
-
-        if (!afl->afl_env.afl_custom_mutator_late_send) {
-
-          el->afl_custom_fuzz_send(el->data, *mem, new_size);
-
-        } else {
-
-          afl->fsrv.custom_input = *mem;
-          afl->fsrv.custom_input_len = new_size;
-
-        }
-
-        sent = 1;
-
-      }
-
-    });
-
-    if (likely(!sent)) {
-
-      /* everything as planned. use the potentially new data. */
-      afl_fsrv_write_to_testcase(&afl->fsrv, *mem, new_size);
-
-    }
-
-    if (likely(!afl->afl_env.afl_post_process_keep_original)) {
-
-      len = new_size;
-
-    } else {
-
-      /* restore the original memory which was saved in new_mem */
-      *mem = new_mem;
-      afl_swap_bufs(AFL_BUF_PARAM(out), AFL_BUF_PARAM(out_scratch));
-
-    }
-
-  } else {                                   /* !afl->custom_mutators_count */
-
-    if (unlikely(len < afl->min_length && !fix)) {
-
-      len = afl->min_length;
-
-    } else if (unlikely(len > afl->max_length)) {
-
-      len = afl->max_length;
-
-    }
-
-    /* boring uncustom. */
-    afl_fsrv_write_to_testcase(&afl->fsrv, *mem, len);
-
   }
 
-#ifdef _AFL_DOCUMENT_MUTATIONS
-  s32  doc_fd;
-  char fn[PATH_MAX];
-  snprintf(fn, PATH_MAX, "%s/mutations/%09u:%s", afl->out_dir,
-           afl->document_counter++,
-           describe_op(afl, 0, NAME_MAX - strlen("000000000:")));
+  if (likely(afl->fsrv.use_shmem_fuzz)) {
 
-  if ((doc_fd = open(fn, O_WRONLY | O_CREAT | O_TRUNC, DEFAULT_PERMISSION)) >=
-      0) {
+    if (unlikely(len > MAX_FILE)) {
 
-    if (write(doc_fd, *mem, len) != len)
-      PFATAL("write to mutation file failed: %s", fn);
-    close(doc_fd);
+      FATAL(
+          "Data length of %u is too large for the in-memory maximum size of %u",
+          len, MAX_FILE);
+
+    }
+
+    memcpy(afl->fsrv.shmem_fuzz, *mem, len);
+    *afl->fsrv.shmem_fuzz_len = len;
+    return len;
 
   }
-
-#endif
 
 #ifdef USE_EBPF
   if (afl->ebpf_io_ctx && afl->use_ebpf_io) {
     // Add the test case file to eBPF interception
     afl_ebpf_io_clear_files(afl->ebpf_io_ctx);
-    afl_ebpf_io_add_file(afl->ebpf_io_ctx, afl->fsrv.out_file, afl->out_buf, afl->queue_cur->len);
+    afl_ebpf_io_add_file(afl->ebpf_io_ctx, afl->fsrv.out_file, *mem, len);
     afl_ebpf_io_set_enabled(afl->ebpf_io_ctx, true);
+    return len;
   }
 #endif
+
+  s32 fd = afl->fsrv.out_fd;
+
+  if (afl->no_unlink) {
+
+    if (unlikely(fd < 0)) {
+
+      if (unlikely(afl->fsrv.out_file[0] == '-')) {
+
+        FATAL("Process does not have stdin for reading");
+
+      }
+
+      fd = open(afl->fsrv.out_file, O_WRONLY | O_CREAT | O_TRUNC,
+                DEFAULT_PERMISSION);
+      if (unlikely(fd < 0)) {
+
+        PFATAL("Unable to create '%s'", afl->fsrv.out_file);
+
+      }
+
+    }
+
+    lseek(fd, 0, SEEK_SET);
+    if (ftruncate(fd, 0)) { PFATAL("ftruncate() failed"); }
+
+  } else {
+
+    if (unlikely(fd >= 0)) { close(fd); }
+
+    if (unlikely(afl->fsrv.out_file[0] == '-')) {
+
+      FATAL("Process does not have stdin for reading");
+
+    }
+
+    unlink(afl->fsrv.out_file);                            /* Ignore errors. */
+    fd = open(afl->fsrv.out_file, O_WRONLY | O_CREAT | O_EXCL,
+              DEFAULT_PERMISSION);
+
+    if (unlikely(fd < 0)) {
+
+      PFATAL("Unable to create '%s'", afl->fsrv.out_file);
+
+    }
+
+  }
+
+  if (unlikely(write(fd, *mem, len) != len)) {
+
+    PFATAL("Short write to '%s'", afl->fsrv.out_file);
+
+  }
+
+  if (unlikely(!afl->no_unlink)) {
+
+    lseek(fd, 0, SEEK_SET);
+    afl->fsrv.out_fd = fd;
+
+  } else if (unlikely(!fix)) {
+
+    close(fd);
+    afl->fsrv.out_fd = -1;
+
+  }
 
   return len;
 
@@ -391,7 +375,39 @@ static void write_with_gap(afl_state_t *afl, u8 *mem, u32 len, u32 skip_at,
 
     return;
 
-  } else if (unlikely(!afl->fsrv.use_stdin)) {
+  }
+
+#ifdef USE_EBPF
+  if (afl->ebpf_io_ctx && afl->use_ebpf_io) {
+    // Prepare the trimmed buffer for eBPF interception
+    u8 *ebpf_buf = NULL;
+    
+    if (!post_process_skipped) {
+      // If we did post_processing, use the new_mem buffer directly
+      ebpf_buf = afl_realloc((void **)&afl->out_buf, new_size);
+      if (unlikely(!ebpf_buf)) { PFATAL("alloc"); }
+      memcpy(ebpf_buf, new_mem, new_size);
+    } else {
+      // Otherwise, create a new buffer with the gap removed
+      ebpf_buf = afl_realloc((void **)&afl->out_buf, new_size);
+      if (unlikely(!ebpf_buf)) { PFATAL("alloc"); }
+      
+      if (skip_at) { memcpy(ebpf_buf, mem, skip_at); }
+      if (tail_len) { 
+        memcpy(ebpf_buf + skip_at, mem + skip_at + skip_len, tail_len);
+      }
+    }
+    
+    // Update the eBPF interception with the trimmed buffer
+    afl_ebpf_io_clear_files(afl->ebpf_io_ctx);
+    afl_ebpf_io_add_file(afl->ebpf_io_ctx, afl->fsrv.out_file, ebpf_buf, new_size);
+    afl_ebpf_io_set_enabled(afl->ebpf_io_ctx, true);
+    
+    return;
+  }
+#endif
+
+  if (unlikely(!afl->fsrv.use_stdin)) {
 
     if (unlikely(afl->no_unlink)) {
 
@@ -1248,4 +1264,3 @@ u8 __attribute__((hot)) common_fuzz_stuff(afl_state_t *afl, u8 *out_buf,
   return 0;
 
 }
-
