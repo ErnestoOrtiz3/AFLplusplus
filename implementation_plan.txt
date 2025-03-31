@@ -1,0 +1,25 @@
+PHASE 1: BASIC XDP SETUP AND TESTING
+------------------------------------
+1. Create minimal XDP program that just passes all packets (XDP_PASS)
+2. Set up build environment with libbpf
+3. Implement loading/unloading mechanism
+4. Create simple test harness to verify XDP attachment
+5. Validate zero impact on regular network traffic
+
+
+PHASE 2: PACKET IDENTIFICATION AND CLASSIFICATION
+------------------------------------------------
+1. Extend XDP program to identify AFL network packets
+2. Implement basic packet parsing (Ethernet, IP, TCP)
+3. Add port-based identification for AFL traffic
+4. Create maps to track AFL connections
+5. Test with actual AFL network traffic
+
+
+PHASE 3: INTEGRATION WITH AFL NETWORK PROXY
+------------------------------------------
+1. Modify afl-network-server to register its port with XDP
+2. Create shared memory mechanism between XDP and afl-network-server
+3. Implement basic statistics collection
+4. Test end-to-end with actual fuzzing workload
+5. Measure performance baseline
