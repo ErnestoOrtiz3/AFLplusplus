@@ -345,27 +345,42 @@ int main(int argc, char *argv[]) {
 
   #endif
 #endif
-      // Store the length in the first 4 bytes of the buffer in little-endian format
-      uint32_t size = *lenptr;
-      buf[0] = size & 0xFF;
-      buf[1] = (size >> 8) & 0xFF;
-      buf[2] = (size >> 16) & 0xFF;
-      buf[3] = (size >> 24) & 0xFF;
-
-      // Debug output to verify the size is correctly set - always print for debugging
-      fprintf(stderr, "[CLIENT] Sending testcase with size %u bytes\n", size);
-      fprintf(stderr, "[CLIENT] First 4 bytes (size in little-endian): %02x %02x %02x %02x\n",
-              (unsigned char)buf[0], (unsigned char)buf[1],
-              (unsigned char)buf[2], (unsigned char)buf[3]);
-      // Print first few bytes of the actual data
-      fprintf(stderr, "[CLIENT] Data starts with: ");
-      for (int i = 0; i < (size > 16 ? 16 : size); i++) {
-        fprintf(stderr, "%02x ", (unsigned char)buf[i + 4]);
+      // Make sure we have valid data to send
+      if (*lenptr == 0) {
+        fprintf(stderr, "[CLIENT] Warning: Received zero-length testcase, skipping\n");
+        continue;
       }
-      fprintf(stderr, "\n");
 
-      if (send(s, buf, *lenptr + 4, 0) != *lenptr + 4)
+      // Create a separate buffer for the size
+      uint32_t size = *lenptr;
+      unsigned char size_buf[4];
+      size_buf[0] = size & 0xFF;
+      size_buf[1] = (size >> 8) & 0xFF;
+      size_buf[2] = (size >> 16) & 0xFF;
+      size_buf[3] = (size >> 24) & 0xFF;
+
+      // Debug output only if AFL_DEBUG is set
+      if (getenv("AFL_DEBUG")) {
+        fprintf(stderr, "[CLIENT] Sending testcase with size %u bytes\n", size);
+        fprintf(stderr, "[CLIENT] Size in little-endian: %02x %02x %02x %02x\n",
+                size_buf[0], size_buf[1], size_buf[2], size_buf[3]);
+        // Print first few bytes of the actual data
+        fprintf(stderr, "[CLIENT] Data starts with: ");
+        for (int i = 0; i < (size > 16 ? 16 : size); i++) {
+          fprintf(stderr, "%02x ", (unsigned char)buf[i + 4]);
+        }
+        fprintf(stderr, "\n");
+      }
+
+      // First send just the size (4 bytes)
+      if (send(s, size_buf, 4, 0) != 4) {
+        PFATAL("sending size information failed");
+      }
+
+      // Then send the actual data
+      if (send(s, buf + 4, size, 0) != size) {
         PFATAL("sending test data failed");
+      }
 #ifdef USE_DEFLATE
   #ifdef COMPRESS_TESTCASES
       // fprintf(stderr, "unCOMPRESS (%u)\n", *lenptr);
