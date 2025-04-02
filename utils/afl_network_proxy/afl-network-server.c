@@ -307,12 +307,29 @@ int recv_testcase(int s, void **buf) {
   s32    ret;
   size_t received;
 
+  fprintf(stderr, "[SERVER] Waiting to receive size information...\n");
   received = 0;
-  while (received < 4 && (ret = recv(s, &size + received, 4 - received, 0)) > 0)
+  unsigned char size_bytes[4];
+  while (received < 4 && (ret = recv(s, size_bytes + received, 4 - received, 0)) > 0) {
+    fprintf(stderr, "[SERVER] Received %d bytes, total %zu\n", ret, received + ret);
     received += ret;
+  }
+
+  // Convert from little-endian to host byte order
+  size = size_bytes[0] | (size_bytes[1] << 8) | (size_bytes[2] << 16) | (size_bytes[3] << 24);
+
+  // Debug output
+  fprintf(stderr, "[SERVER] Size bytes received: %02x %02x %02x %02x (value: %u)\n",
+          size_bytes[0], size_bytes[1], size_bytes[2], size_bytes[3], size);
+
+  if (ret <= 0) {
+    fprintf(stderr, "recv() returned %d, errno=%d (%s)\n", ret, errno, strerror(errno));
+  }
+
   if (received != 4) FATAL("did not receive size information");
+  fprintf(stderr, "Received size information: %u\n", size);
   if (size == 0) FATAL("did not receive valid size information");
-  // fprintf(stderr, "received size information of %d\n", size);
+  fprintf(stderr, "received size information of %d\n", size);
 
   if ((size & 0xff000000) != 0xff000000) {
 

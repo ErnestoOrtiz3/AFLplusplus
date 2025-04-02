@@ -345,6 +345,25 @@ int main(int argc, char *argv[]) {
 
   #endif
 #endif
+      // Store the length in the first 4 bytes of the buffer in little-endian format
+      uint32_t size = *lenptr;
+      buf[0] = size & 0xFF;
+      buf[1] = (size >> 8) & 0xFF;
+      buf[2] = (size >> 16) & 0xFF;
+      buf[3] = (size >> 24) & 0xFF;
+
+      // Debug output to verify the size is correctly set - always print for debugging
+      fprintf(stderr, "[CLIENT] Sending testcase with size %u bytes\n", size);
+      fprintf(stderr, "[CLIENT] First 4 bytes (size in little-endian): %02x %02x %02x %02x\n",
+              (unsigned char)buf[0], (unsigned char)buf[1],
+              (unsigned char)buf[2], (unsigned char)buf[3]);
+      // Print first few bytes of the actual data
+      fprintf(stderr, "[CLIENT] Data starts with: ");
+      for (int i = 0; i < (size > 16 ? 16 : size); i++) {
+        fprintf(stderr, "%02x ", (unsigned char)buf[i + 4]);
+      }
+      fprintf(stderr, "\n");
+
       if (send(s, buf, *lenptr + 4, 0) != *lenptr + 4)
         PFATAL("sending test data failed");
 #ifdef USE_DEFLATE
