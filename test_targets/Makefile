@@ -1,6 +1,6 @@
 # Makefile for AFL++ scheduler test targets
 
-CC ?= afl-clang-fast
+CC = ../afl-clang-fast
 CFLAGS += -g -O2 -Wall -Wextra
 
 all: scheduler_test
