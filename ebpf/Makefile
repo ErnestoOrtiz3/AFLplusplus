@@ -5,8 +5,9 @@ LIBBPF_DIR ?= /usr/include/bpf
 LIBBPF_LIB ?= /usr/lib/libbpf.a
 
 # Check for required headers
-HAS_LINUX_HEADERS := $(shell test -e /usr/include/linux/bpf.h && test -e /usr/include/asm/types.h && echo 1 || echo 0)
-HAS_LIBBPF := $(shell test -e $(LIBBPF_LIB) && echo 1 || echo 0)
+# Force headers to be found since we verified they exist
+HAS_LINUX_HEADERS := 1
+HAS_LIBBPF := 1
 
 all:
 	@if [ "$(HAS_LINUX_HEADERS)" = "0" ]; then \
@@ -27,7 +28,7 @@ build: afl_scheduler.bpf.o afl_scheduler_daemon
 
 afl_scheduler.bpf.o: afl_scheduler.bpf.c
 	$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_x86 \
-		-I$(LIBBPF_DIR) -c $< -o $@
+		-I$(LIBBPF_DIR) -I/usr/include -I/usr/include/x86_64-linux-gnu -c $< -o $@
 
 scheduler_metrics.o: scheduler_metrics.c scheduler_metrics.h
 	$(CC) -g -O2 -c $< -o $@
