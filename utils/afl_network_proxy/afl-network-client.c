@@ -49,6 +49,13 @@
   #include <libdeflate.h>
 #endif
 
+// Forkserver result codes (copied from afl-forkserver.h)
+#define FSRV_RUN_OK        0
+#define FSRV_RUN_TMOUT     1
+#define FSRV_RUN_CRASH     2
+#define FSRV_RUN_ERROR     3
+#define FSRV_RUN_NOINST    4
+
 u8 *__afl_area_ptr;
 u8 *__afl_area_ptr_orig; // Original pointer for freeing
 
@@ -529,21 +536,42 @@ int main(int argc, char *argv[]) {
       // Use a default status
       status = 0;
     } else {
+      // Receive the status information array from server
+      u32 status_info[3];
       received = 0;
-      while (received < 4 &&
-             (ret = recv(s, &status + received, 4 - received, 0)) > 0)
+      while (received < sizeof(status_info) &&
+             (ret = recv(s, (char*)status_info + received, sizeof(status_info) - received, 0)) > 0) {
         received += ret;
+      }
 
-      if (received != 4) {
-        if (getenv("AFL_DEBUG")) {
-          fprintf(stderr, "[CLIENT] Error: did not receive waitpid data (%d, %d)\n", received, ret);
-          fprintf(stderr, "[CLIENT] errno=%d (%s)\n", errno, strerror(errno));
-        }
+      if (received != sizeof(status_info)) {
+        fprintf(stderr, "[CLIENT] Error: did not receive complete status info (%d, %d)\n", received, ret);
         // Use a default status
         status = 0;
       } else {
-        // The first 4 bytes from the server are the exit status
-        fprintf(stderr, "[CLIENT] Received exit status %d from server\n", status);
+        // Extract the components
+        u32 run_result = status_info[0];    // FSRV_RUN_RESULT
+        u32 kill_signal = status_info[1];   // Signal that killed the process
+        u32 exit_code = status_info[2];     // Exit code if not killed by signal
+
+        fprintf(stderr, "[CLIENT] Received from server: result=%u, signal=%u, exit_code=%u\n",
+                run_result, kill_signal, exit_code);
+
+        // Construct the status value that AFL++ expects
+        if (run_result == FSRV_RUN_CRASH && kill_signal > 0) {
+          // For signal termination, construct a status value that will make WIFSIGNALED() return true
+          // The format is typically: (signal << 8) | 0x7F
+          status = (kill_signal << 8) | 0x7F;
+          fprintf(stderr, "[CLIENT] Process crashed with signal %u, reporting status %d\n", kill_signal, status);
+        } else if (exit_code > 0) {
+          // For normal termination with non-zero exit code
+          status = (exit_code << 8);
+          fprintf(stderr, "[CLIENT] Process exited with code %u, reporting status %d\n", exit_code, status);
+        } else {
+          // Normal execution or other condition
+          status = 0;
+          fprintf(stderr, "[CLIENT] Process executed normally, reporting status 0\n");
+        }
       }
     }
 
