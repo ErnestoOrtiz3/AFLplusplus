@@ -29,6 +29,7 @@
 #include "cmplog.h"
 #include "asanfuzz.h"
 #include "common.h"
+#include "scheduler_feedback.h"
 #include <limits.h>
 #include <stdlib.h>
 #ifndef USEMMAP
@@ -279,6 +280,7 @@ static void usage(u8 *argv0, int more_help) {
       "  -M/-S id      - distributed mode (-M sets -Z and disables trimming)\n"
       "                  see docs/fuzzing_in_depth.md#c-using-multiple-cores\n"
       "                  for effective recommendations for parallel fuzzing.\n"
+      "  -S scheduler  - enable scheduler feedback for eBPF CPU schedulers\n"
       "  -F path       - sync to a foreign fuzzer queue directory (requires "
       "-M, can\n"
       "                  be specified up to %u times)\n"
@@ -414,6 +416,7 @@ static void usage(u8 *argv0, int more_help) {
       "                      afl-clang-lto/afl-gcc-fast target\n"
       "AFL_PERSISTENT: enforce persistent mode (if __AFL_LOOP is in a shared lib)\n"
       "AFL_DEFER_FORKSRV: enforced deferred forkserver (__AFL_INIT is in a shared lib)\n"
+      "AFL_SCHEDULER_FEEDBACK: enable scheduler feedback for eBPF CPU schedulers\n"
       "AFL_FUZZER_STATS_UPDATE_INTERVAL: interval to update fuzzer_stats file in\n"
       "                                  seconds (default: 60, minimum: 1)\n"
       "\n"
@@ -919,18 +922,24 @@ int main(int argc, char **argv_orig, char **envp) {
 
         if (afl->sync_id) { FATAL("Multiple -S or -M options not supported"); }
 
-        /* sanity check for argument: should not begin with '-' (possible
-         * option) */
-        if (optarg && *optarg == '-') {
+        /* Check for scheduler option */
+        if (optarg && !strcmp(optarg, "scheduler")) {
+          afl->scheduler_feedback_enabled = 1;
+          setenv("AFL_SCHEDULER_FEEDBACK", "1", 1);
+        } else {
+          /* sanity check for argument: should not begin with '-' (possible
+           * option) */
+          if (optarg && *optarg == '-') {
 
-          FATAL(
-              "argument for -M started with a dash '-', which is used for "
-              "options");
+            FATAL(
+                "argument for -S started with a dash '-', which is used for "
+                "options");
 
+          }
+
+          afl->sync_id = ck_strdup(optarg);
+          afl->is_secondary_node = 1;
         }
-
-        afl->sync_id = ck_strdup(optarg);
-        afl->is_secondary_node = 1;
         break;
 
       case 'F':                                         /* foreign sync dir */
@@ -3032,6 +3041,11 @@ int main(int argc, char **argv_orig, char **envp) {
   // real start time, we reset, so this works correctly with -V
   afl->start_time = get_cur_time();
 
+  // Initialize scheduler feedback if enabled
+  if (afl->scheduler_feedback_enabled) {
+    afl_scheduler_feedback_init(afl);
+  }
+
   while (likely(!afl->stop_soon)) {
 
     cull_queue(afl);
@@ -3387,6 +3401,12 @@ int main(int argc, char **argv_orig, char **envp) {
 
     }
 
+    // Update scheduler feedback if enabled
+    if (afl->scheduler_feedback_enabled &&
+        unlikely(cur_time > afl->scheduler_feedback->last_update_time + 1000)) {
+      afl_scheduler_feedback_update(afl);
+    }
+
     if (likely(!afl->stop_soon && afl->sync_id)) {
 
       if (unlikely(afl->is_main_node)) {
@@ -3422,6 +3442,11 @@ stop_fuzzing:
   show_stats(afl);           // print the screen one last time
   write_bitmap(afl);
   save_auto(afl);
+
+  // Clean up scheduler feedback if enabled
+  if (afl->scheduler_feedback_enabled && afl->scheduler_feedback) {
+    afl_scheduler_feedback_deinit(afl);
+  }
 
   #ifdef __AFL_CODE_COVERAGE
   if (afl->fsrv.persistent_trace_bits) {

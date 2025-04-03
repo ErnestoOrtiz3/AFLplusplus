@@ -798,6 +798,14 @@ typedef struct afl_state {
   u8 *clean_trace_custom;
   u8 *first_trace;
 
+  /* Scheduler feedback */
+  struct scheduler_feedback *scheduler_feedback;
+  int scheduler_feedback_shm_id;
+  u32 last_reported_edges;
+  u32 last_reported_crashes;
+  u32 stats_avg_exec_prev;
+  u8 scheduler_feedback_enabled;
+
   /*needed for afl_fuzz_one */
   // TODO: see which we can reuse
   u8 *out_buf;

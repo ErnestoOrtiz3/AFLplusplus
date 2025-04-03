@@ -27,6 +27,7 @@
 #include <limits.h>
 #include "afl-fuzz.h"
 #include "envs.h"
+#include "scheduler_feedback.h"
 
 char *power_names[POWER_SCHEDULES_NUM] = {"explore", "mmopt", "exploit",
                                           "fast",    "coe",   "lin",
@@ -98,6 +99,14 @@ void afl_state_init(afl_state_t *afl, uint32_t map_size) {
   afl->stats_update_freq = 1;
   afl->stats_file_update_freq_msecs = STATS_UPDATE_SEC * 1000;
   afl->stats_avg_exec = 0;
+
+  /* Scheduler feedback */
+  afl->scheduler_feedback = NULL;
+  afl->scheduler_feedback_shm_id = -1;
+  afl->last_reported_edges = 0;
+  afl->last_reported_crashes = 0;
+  afl->stats_avg_exec_prev = 0;
+  afl->scheduler_feedback_enabled = 0;
   afl->skip_deterministic = 0;
   afl->sync_time = SYNC_TIME;
   afl->cmplog_lvl = 2;
@@ -738,6 +747,11 @@ void afl_state_deinit(afl_state_t *afl) {
   if (afl->pass_stats) { ck_free(afl->pass_stats); }
   if (afl->orig_cmp_map) { ck_free(afl->orig_cmp_map); }
   if (afl->cmplog_binary) { ck_free(afl->cmplog_binary); }
+
+  /* Clean up scheduler feedback */
+  if (afl->scheduler_feedback_enabled && afl->scheduler_feedback) {
+    afl_scheduler_feedback_deinit(afl);
+  }
 
   afl_free(afl->queue_buf);
   afl_free(afl->out_buf);
