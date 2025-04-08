@@ -6,14 +6,17 @@
  * It prioritizes fuzzing processes that are discovering new paths or crashes.
  */
 
-#include <linux/sched.h>
-#include <linux/types.h>
-#include <linux/bpf.h>
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_tracing.h>
-#include <asm/current.h>
+/* Define this before including any headers to avoid duplicate definitions */
+#define BPF_NO_KFUNC_PROTOTYPES
+
+/* Include only SCX headers and avoid system headers that cause conflicts */
 #include "scx/common.bpf.h"
 #include "scx/compat.bpf.h"
+
+/* Use BPF helpers directly */
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_tracing.h>
+#include <errno.h>
 
 char LICENSE[] SEC("license") = "GPL";
 
@@ -63,12 +66,24 @@ struct {
     __type(value, struct task_ctx);
 } task_ctx_storage SEC(".maps");
 
-/* Global dispatch queue */
+/* Global dispatch queue - using a priority queue instead of a regular queue */
 struct {
-    __uint(type, BPF_MAP_TYPE_QUEUE);
+    __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(max_entries, 4096);
+    __type(key, u32);
     __type(value, struct task_struct *);
 } dispatch_q SEC(".maps");
+
+/* Queue management */
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, u32);
+    __type(value, struct {
+        u32 head;
+        u32 tail;
+    });
+} queue_state SEC(".maps");
 
 /* Statistics */
 struct {
@@ -85,10 +100,13 @@ struct {
 /* Helper functions */
 static bool is_afl_process(struct task_struct *p)
 {
-    const char *comm = BPF_CORE_READ(p, comm);
+    char comm[16];
+    
+    // Use bpf_probe_read_kernel to safely read the comm field
+    if (bpf_probe_read_kernel(comm, sizeof(comm), &p->comm))
+        return false;
     
     // Check if the process name matches afl-fuzz
-    // Note: comm is limited to 16 chars, so we can only check for "afl-fuzz"
     if (comm[0] == 'a' && comm[1] == 'f' && comm[2] == 'l' && 
         comm[3] == '-' && comm[4] == 'f' && comm[5] == 'u' && 
         comm[6] == 'z' && comm[7] == 'z') {
@@ -104,10 +122,13 @@ static u64 get_task_weight(struct task_struct *p)
     u32 *weight;
     u64 *boost_until;
     u64 now = scx_bpf_now();
+    pid_t pid;
     
     // Check if this is an AFL++ process
     if (is_afl_process(p)) {
-        pid_t pid = BPF_CORE_READ(p, pid);
+        // Read the PID safely
+        if (bpf_probe_read_kernel(&pid, sizeof(pid), &p->pid))
+            return 100; // Default weight if read fails
         
         // Check if this task has a priority boost
         boost_until = bpf_map_lookup_elem(&afl_boost_until, &pid);
@@ -130,6 +151,12 @@ static u64 get_task_weight(struct task_struct *p)
 static struct task_ctx *get_task_ctx(struct task_struct *p)
 {
     struct task_ctx *ctx;
+    
+    if (!p)
+        return NULL;
+    
+    // Don't use bpf_core_read_user here, as it's causing verifier issues
+    // Instead, rely on the SCX framework's validation
     
     ctx = bpf_task_storage_get(&task_ctx_storage, p, 0, 0);
     if (!ctx) {
@@ -178,119 +205,172 @@ static void update_stats(u64 dispatches, u64 afl_dispatches, u64 boosted_dispatc
     stats_p->boosted_dispatches += boosted_dispatches;
 }
 
+/* Queue helper functions */
+static bool queue_push(struct task_struct *task)
+{
+    u32 key = 0;
+    struct {
+        u32 head;
+        u32 tail;
+    } *state;
+    
+    state = bpf_map_lookup_elem(&queue_state, &key);
+    if (!state)
+        return false;
+    
+    u32 next_tail = (state->tail + 1) % 4096;
+    if (next_tail == state->head)
+        return false;  // Queue is full
+    
+    key = state->tail;
+    if (bpf_map_update_elem(&dispatch_q, &key, &task, BPF_ANY))
+        return false;
+    
+    state->tail = next_tail;
+    return true;
+}
+
+static struct task_struct *queue_pop(void)
+{
+    u32 key = 0;
+    struct {
+        u32 head;
+        u32 tail;
+    } *state;
+    
+    state = bpf_map_lookup_elem(&queue_state, &key);
+    if (!state)
+        return NULL;
+    
+    if (state->head == state->tail)
+        return NULL;  // Queue is empty
+    
+    key = state->head;
+    struct task_struct **task_ptr = bpf_map_lookup_elem(&dispatch_q, &key);
+    if (!task_ptr)
+        return NULL;
+    
+    struct task_struct *task = *task_ptr;
+    
+    state->head = (state->head + 1) % 4096;
+    return task;
+}
+
 /* Scheduler operations */
-void BPF_STRUCT_OPS(afl_sched_init)
+s32 BPF_STRUCT_OPS(afl_sched_init)
 {
     u32 key = 0;
     u64 zero = 0;
     
     bpf_map_update_elem(&min_vruntime, &key, &zero, BPF_ANY);
+    
+    return 0;
 }
 
-void BPF_STRUCT_OPS(afl_sched_exit)
+s32 BPF_STRUCT_OPS(afl_sched_exit)
 {
     // Nothing to do
+    return 0;
 }
 
-void BPF_STRUCT_OPS(afl_sched_tick, struct task_struct *p)
+s32 BPF_STRUCT_OPS(afl_sched_tick, struct task_struct *p)
 {
-    struct task_ctx *ctx;
+    struct task_ctx *task_context;
     u64 now, delta, weight;
     
-    ctx = get_task_ctx(p);
-    if (!ctx) {
-        return;
+    // Validate task pointer
+    if (!p) {
+        return 0;
+    }
+    
+    // Get task context
+    task_context = bpf_task_storage_get(&task_ctx_storage, p, 0, 0);
+    if (!task_context) {
+        return 0;
     }
     
     // Get current time and calculate how long the task has been running
     now = scx_bpf_now();
-    delta = now - ctx->enqueued_at;
+    delta = now - task_context->enqueued_at;
     
     // Get task weight
-    weight = ctx->weight;
+    weight = task_context->weight;
     
     // Update vruntime based on how long it ran and its weight
     // Higher weight = slower vruntime accumulation = more CPU time
-    ctx->vruntime += delta * 100 / weight;
+    task_context->vruntime += delta * 100 / weight;
     
     // Update task context
-    ctx->enqueued_at = now;
+    task_context->enqueued_at = now;
+    return 0;
 }
 
-void BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
+s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
 {
-    struct task_ctx *ctx;
+    struct task_ctx *task_context;
     u64 min_vruntime_val, weight;
+    u64 slice;
+    bool is_afl, is_boosted = false;
+    pid_t pid;
+    
+    // Validate task pointer
+    if (!p) {
+        return -EINVAL;
+    }
     
     // Get or create task context
-    ctx = bpf_task_storage_get(&task_ctx_storage, p, 0, BPF_LOCAL_STORAGE_GET_F_CREATE);
-    if (!ctx) {
-        // Failed to get task context, use default scheduling
-        scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_DFL, enq_flags);
-        return;
-    }
-    
-    // Get current minimum vruntime
-    min_vruntime_val = get_min_vruntime();
-    
-    // Get task weight
-    weight = get_task_weight(p);
-    
-    // Initialize task context if this is the first time we're seeing this task
-    if (ctx->vruntime == 0) {
-        ctx->vruntime = min_vruntime_val;
-    } else if (ctx->vruntime < min_vruntime_val) {
-        // Ensure vruntime doesn't fall too far behind
-        ctx->vruntime = min_vruntime_val;
-    }
-    
-    // Update task context
-    ctx->weight = weight;
-    ctx->enqueued_at = scx_bpf_now();
-    
-    // Insert task into dispatch queue
-    bpf_map_push_elem(&dispatch_q, &p, 0);
-}
-
-void BPF_STRUCT_OPS(afl_sched_dispatch, s32 cpu, struct task_struct *prev)
-{
-    struct task_struct *next;
-    struct task_ctx *ctx;
-    u64 slice, min_vruntime_val;
-    bool is_afl, is_boosted = false;
-    
-    // Try to get a task from the dispatch queue
-    if (bpf_map_pop_elem(&dispatch_q, &next)) {
-        // No tasks in queue
-        return;
-    }
-    
-    // Get task context
-    ctx = get_task_ctx(next);
-    if (!ctx) {
-        // Failed to get task context, use default slice
-        scx_bpf_dsq_insert(next, SCX_DSQ_LOCAL, SCX_SLICE_DFL, 0);
-        return;
+    task_context = get_task_ctx(p);
+    if (!task_context) {
+        // Create new task context
+        struct task_ctx new_ctx = {};
+        
+        // Initialize with current min_vruntime
+        new_ctx.vruntime = get_min_vruntime();
+        
+        // Set weight based on task priority
+        weight = get_task_weight(p);
+        new_ctx.weight = weight;
+        
+        // Set enqueued time
+        new_ctx.enqueued_at = scx_bpf_now();
+        
+        // Store task context
+        bpf_task_storage_get(&task_ctx_storage, p, &new_ctx, BPF_NOEXIST);
+        
+        // Try to get it again
+        task_context = get_task_ctx(p);
+        if (!task_context) {
+            // Failed to create task context
+            return -ENOMEM;
+        }
+    } else {
+        // Update existing task context
+        task_context->enqueued_at = scx_bpf_now();
     }
     
     // Check if this is an AFL process
-    is_afl = is_afl_process(next);
+    is_afl = is_afl_process(p);
     
     // Check if this task has a priority boost
     if (is_afl) {
-        pid_t pid = BPF_CORE_READ(next, pid);
-        u64 *boost_until = bpf_map_lookup_elem(&afl_boost_until, &pid);
-        u64 now = scx_bpf_now();
-        
-        if (boost_until && *boost_until > now) {
-            // Task is boosted, give it a longer slice
-            slice = slice_us * 2;
-            is_boosted = true;
+        // Read the PID safely
+        if (bpf_probe_read_kernel(&pid, sizeof(pid), &p->pid)) {
+            // Default behavior if read fails
+            slice = slice_us;
         } else {
-            // Normal slice based on weight
-            slice = slice_us * ctx->weight / 100;
-            if (slice < slice_us_min) {
-                slice = slice_us_min;
+            u64 *boost_until = bpf_map_lookup_elem(&afl_boost_until, &pid);
+            u64 now = scx_bpf_now();
+            
+            if (boost_until && *boost_until > now) {
+                // Task is boosted, give it a longer slice
+                slice = slice_us * 2;
+                is_boosted = true;
+            } else {
+                // Normal slice based on weight
+                slice = slice_us * task_context->weight / 100;
+                if (slice < slice_us_min) {
+                    slice = slice_us_min;
+                }
             }
         }
     } else {
@@ -300,15 +380,24 @@ void BPF_STRUCT_OPS(afl_sched_dispatch, s32 cpu, struct task_struct *prev)
     
     // Update minimum vruntime
     min_vruntime_val = get_min_vruntime();
-    if (ctx->vruntime < min_vruntime_val) {
-        update_min_vruntime(ctx->vruntime);
+    if (task_context->vruntime < min_vruntime_val) {
+        update_min_vruntime(task_context->vruntime);
     }
     
-    // Dispatch task
-    scx_bpf_dsq_insert(next, SCX_DSQ_LOCAL, slice, 0);
+    // Directly insert the task into the dispatch queue
+    scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, slice, 0);
     
     // Update statistics
     update_stats(1, is_afl ? 1 : 0, is_boosted ? 1 : 0);
+    
+    return 0;
+}
+
+s32 BPF_STRUCT_OPS(afl_sched_dispatch, s32 cpu, struct task_struct *prev)
+{
+    // We don't need to do anything here since we're using SCX_DSQ_LOCAL
+    // The SCX framework will handle dispatching tasks from the local queue
+    return -ENOENT;
 }
 
 SEC(".struct_ops.link")

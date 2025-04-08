@@ -18,6 +18,15 @@
 #include <sys/shm.h>
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+
+/* Define types needed by the skeleton before including it */
+typedef unsigned long long u64;
+typedef unsigned int u32;
+typedef int s32;
+typedef unsigned char u8;
+typedef unsigned short u16;
+
+/* Now include the skeleton header */
 #include "afl_sched.skel.h"
 
 #define MAX_FUZZERS 1024

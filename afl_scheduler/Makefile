@@ -10,6 +10,9 @@ CLANG ?= clang
 LLVM_STRIP ?= llvm-strip
 BPFTOOL ?= bpftool
 
+# SCX path - adjust this to point to your SCX installation
+SCX_PATH ?= ../scx
+
 # Source files
 MONITOR_SRC = afl_monitor.c
 SCHED_SRC = afl_sched.c
@@ -30,8 +33,10 @@ $(MONITOR_BIN): $(MONITOR_SRC)
 
 # Build BPF object file
 $(BPF_OBJ): $(BPF_SRC)
-	$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_x86 \
-		-I/usr/include/$(shell uname -m)-linux-gnu \
+	$(CLANG) -g -O2 -target bpf \
+		-D__TARGET_ARCH_x86 \
+		-I$(SCX_PATH) \
+		-I$(SCX_PATH)/scheds/include \
 		-c $(BPF_SRC) -o $@
 	$(LLVM_STRIP) -g $@
 
