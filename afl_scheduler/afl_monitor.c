@@ -22,6 +22,8 @@
 #include <sys/wait.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <stdint.h>
+#include <math.h>
 
 #define MAX_FUZZERS 1024
 #define MAX_PATH 512
@@ -547,11 +549,17 @@ static void parse_fuzzer_stats(fuzzer_info_t *fuzzer) {
     
     // Construct path to fuzzer_stats file
     if (fuzzer->fuzzer_id[0]) {
-        snprintf(stats_path, sizeof(stats_path), "%s/%s/fuzzer_stats", 
-                 fuzzer->out_dir, fuzzer->fuzzer_id);
+        if (snprintf(stats_path, sizeof(stats_path), "%s/%s/fuzzer_stats", 
+                 fuzzer->out_dir, fuzzer->fuzzer_id) >= sizeof(stats_path)) {
+            fprintf(stderr, "Warning: stats_path truncated for fuzzer %s\n", fuzzer->fuzzer_id);
+            return;
+        }
     } else {
-        snprintf(stats_path, sizeof(stats_path), "%s/fuzzer_stats", 
-                 fuzzer->out_dir);
+        if (snprintf(stats_path, sizeof(stats_path), "%s/fuzzer_stats", 
+                 fuzzer->out_dir) >= sizeof(stats_path)) {
+            fprintf(stderr, "Warning: stats_path truncated\n");
+            return;
+        }
     }
     
     f = fopen(stats_path, "r");
