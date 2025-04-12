@@ -25,7 +25,7 @@ BPF_OBJ = bpf/afl_sched.bpf.o
 SKEL_H = afl_sched.skel.h
 
 # Default target
-all: $(MONITOR_BIN) $(SCHED_BIN)
+all: $(MONITOR_BIN) $(SCHED_BIN) stats_collector
 
 # Build monitor daemon
 $(MONITOR_BIN): $(MONITOR_SRC)
@@ -48,13 +48,18 @@ $(SKEL_H): $(BPF_OBJ)
 $(SCHED_BIN): $(SCHED_SRC) $(SKEL_H)
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
+# Add stats collector to build targets
+stats_collector: stats_collector.c
+	$(CC) -o $@ $< -lbpf
+
 # Clean
 clean:
-	rm -f $(MONITOR_BIN) $(SCHED_BIN) $(BPF_OBJ) $(SKEL_H)
+	rm -f $(MONITOR_BIN) $(SCHED_BIN) $(BPF_OBJ) $(SKEL_H) stats_collector
 
 # Install
 install: all
 	install -m 755 $(MONITOR_BIN) /usr/local/bin/
 	install -m 755 $(SCHED_BIN) /usr/local/bin/
+	install -m 755 stats_collector /usr/local/bin/
 
 .PHONY: all clean install

@@ -97,6 +97,14 @@ struct {
     });
 } stats SEC(".maps");
 
+/* Statistics for boost time tracking */
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 1024);
+    __type(key, pid_t);
+    __type(value, u64);
+} afl_total_boost_time SEC(".maps");
+
 /* Helper functions */
 static bool is_afl_process(struct task_struct *p)
 {
@@ -365,6 +373,16 @@ s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
                 // Task is boosted, give it a longer slice
                 slice = slice_us * 2;
                 is_boosted = true;
+                
+                // Track boost time (current boost duration)
+                u64 boost_duration = *boost_until - now;
+                u64 *total_boost = bpf_map_lookup_elem(&afl_total_boost_time, &pid);
+                if (total_boost) {
+                    u64 new_total = *total_boost + boost_duration;
+                    bpf_map_update_elem(&afl_total_boost_time, &pid, &new_total, BPF_ANY);
+                } else {
+                    bpf_map_update_elem(&afl_total_boost_time, &pid, &boost_duration, BPF_ANY);
+                }
             } else {
                 // Normal slice based on weight
                 slice = slice_us * task_context->weight / 100;
