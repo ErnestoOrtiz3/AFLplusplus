@@ -89,20 +89,6 @@ clean_previous_results
 # Create directories
 mkdir -p "${CUSTOM_DIR}" "${CFS_DIR}" "${STATS_DIR}"
 
-# Create original_seeds directory if it doesn't exist
-if [ ! -d "${AFL_DIR}/original_seeds" ]; then
-    mkdir -p "${AFL_DIR}/original_seeds"
-    # If input_dir already exists and has files, back them up
-    if [ -d "${AFL_DIR}/input_dir" ] && [ "$(ls -A ${AFL_DIR}/input_dir 2>/dev/null)" ]; then
-        cp "${AFL_DIR}/input_dir"/* "${AFL_DIR}/original_seeds/"
-    else
-        # Create a minimal test case
-        mkdir -p "${AFL_DIR}/input_dir"
-        echo "test" > "${AFL_DIR}/original_seeds/seed"
-        cp "${AFL_DIR}/original_seeds/seed" "${AFL_DIR}/input_dir/"
-    fi
-fi
-
 # Initialize arrays for PIDs
 declare -a SECONDARY_PIDS=()
 
@@ -149,28 +135,12 @@ collect_stats() {
     done
 }
 
-# Function to reset input directory
-reset_input_dir() {
-    echo "Resetting input directory..."
-    rm -rf "${AFL_DIR}/input_dir"
-    mkdir -p "${AFL_DIR}/input_dir"
-    # Copy original seed files back to input directory
-    cp "${AFL_DIR}/original_seeds"/* "${AFL_DIR}/input_dir/" 2>/dev/null || echo "No original seeds found, creating minimal test case"
-    # Create a minimal test case if no original seeds exist
-    if [ ! "$(ls -A ${AFL_DIR}/input_dir 2>/dev/null)" ]; then
-        echo "test" > "${AFL_DIR}/input_dir/seed"
-    fi
-}
-
 # Function to run benchmark with a specific scheduler
 run_benchmark_with_scheduler() {
     local scheduler_type=$1
     local output_dir=$2
     
     echo "=== Running with ${scheduler_type} scheduler ==="
-    
-    # Reset input directory before run
-    reset_input_dir
     
     # Clear system caches
     clear_system_caches
