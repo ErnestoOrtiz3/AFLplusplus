@@ -1,0 +1,13 @@
+Test ID: test_20250413_151131_d1000000_w1000_p1000_s20_f0.99
+Duration: 1 minutes
+Number of instances: 4
+Target program: ./complex_target_afl
+Target arguments: @@
+Memory limit: none
+Timeout: 7500+
+Scheduler order: custom_first
+Boost duration: 1000000 us
+Boost weight: 1000
+Poll interval: 1000 ms
+Weight scale factor: 20
+Decay factor: 0.99

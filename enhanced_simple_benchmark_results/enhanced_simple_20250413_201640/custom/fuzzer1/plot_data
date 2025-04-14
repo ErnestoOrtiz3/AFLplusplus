@@ -1,0 +1,4 @@
+# relative_time, cycles_done, cur_item, corpus_count, pending_total, pending_favs, map_size, saved_crashes, saved_hangs, max_depth, execs_per_sec, total_execs, edges_found, total_crashes, servers_count
+60, 0, 8, 59, 53, 20, 31.70%, 0, 0, 2, 395.63, 25227, 129, 0, 0
+65, 0, 8, 59, 53, 20, 31.70%, 0, 0, 2, 388.58, 27198, 129, 0, 0
+66, 0, 9, 59, 53, 20, 31.70%, 0, 0, 2, 412.26, 27574, 129, 0, 0

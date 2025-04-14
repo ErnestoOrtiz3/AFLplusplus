@@ -1,0 +1,155 @@
+=== Parameter Benchmark Summary ===
+
+=== benchmark_results_baseline ===
+Test: baseline
+Boost duration: 1000000 us
+Boost weight: 1000
+Poll interval: 1000 ms
+Weight scale: 10
+Decay factor: 0.99
+
+== Overall Performance ==
+Total executions/sec: Custom=7944.33, CFS=8006.71, Diff=-0.78%
+Total paths found: Custom=828, CFS=752, Diff=10.11%
+Total crashes found: Custom=12, CFS=1, Diff=1100.00%
+Total executions done: Custom=467427, CFS=470876, Diff=-0.73%
+Total edges found: Custom=780, CFS=743, Diff=4.98%
+Average bitmap coverage: Custom=47.91%, CFS=45.64%, Diff=2.27pp
+
+
+=== benchmark_results_boost_duration ===
+Test: boost_duration
+Boost duration: 3000000 us
+Boost weight: 1000
+Poll interval: 1000 ms
+Weight scale: 10
+Decay factor: 0.99
+
+== Overall Performance ==
+Total executions/sec: Custom=7854.71, CFS=7862.49, Diff=-0.10%
+Total paths found: Custom=715, CFS=611, Diff=17.02%
+Total crashes found: Custom=3, CFS=3, Diff=0.00%
+Total executions done: Custom=462146, CFS=462483, Diff=-0.07%
+Total edges found: Custom=652, CFS=619, Diff=5.33%
+Average bitmap coverage: Custom=40.05%, CFS=38.02%, Diff=2.03pp
+
+
+=== benchmark_results_boost_duration_weight ===
+Test: boost_duration_weight
+Boost duration: 3000000 us
+Boost weight: 3000
+Poll interval: 1000 ms
+Weight scale: 10
+Decay factor: 0.99
+
+== Overall Performance ==
+Total executions/sec: Custom=7645.52, CFS=7918.49, Diff=-3.45%
+Total paths found: Custom=704, CFS=718, Diff=-1.95%
+Total crashes found: Custom=1, CFS=2, Diff=-50.00%
+Total executions done: Custom=449516, CFS=465753, Diff=-3.49%
+Total edges found: Custom=692, CFS=597, Diff=15.91%
+Average bitmap coverage: Custom=42.50%, CFS=36.67%, Diff=5.83pp
+
+
+=== benchmark_results_boost_weight ===
+Test: boost_weight
+Boost duration: 1000000 us
+Boost weight: 3000
+Poll interval: 1000 ms
+Weight scale: 10
+Decay factor: 0.99
+
+== Overall Performance ==
+Total executions/sec: Custom=7729.17, CFS=7768.77, Diff=-0.51%
+Total paths found: Custom=660, CFS=703, Diff=-6.12%
+Total crashes found: Custom=2, CFS=1, Diff=100.00%
+Total executions done: Custom=455500, CFS=455131, Diff=0.08%
+Total edges found: Custom=633, CFS=616, Diff=2.76%
+Average bitmap coverage: Custom=38.88%, CFS=37.84%, Diff=1.04pp
+
+
+=== benchmark_results_calibration2_config ===
+Test: calibration2_config
+Boost duration: 3000000 us
+Boost weight: 3000
+Poll interval: 1000 ms
+Weight scale: 20
+Decay factor: 0.99
+
+== Overall Performance ==
+Total executions/sec: Custom=7606.01, CFS=7628.78, Diff=-0.30%
+Total paths found: Custom=1436, CFS=1739, Diff=-17.42%
+Total crashes found: Custom=3, CFS=8, Diff=-62.50%
+Total executions done: Custom=2275991, CFS=2279359, Diff=-0.15%
+Total edges found: Custom=816, CFS=979, Diff=-16.65%
+Average bitmap coverage: Custom=50.12%, CFS=60.13%, Diff=-10.01pp
+
+
+=== benchmark_results_decay_factor ===
+Test: decay_factor
+Boost duration: 1000000 us
+Boost weight: 1000
+Poll interval: 1000 ms
+Weight scale: 10
+Decay factor: 0.95
+
+== Overall Performance ==
+Total executions/sec: Custom=7808.41, CFS=7816.27, Diff=-0.10%
+Total paths found: Custom=616, CFS=876, Diff=-29.68%
+Total crashes found: Custom=0, CFS=4, Diff=-100.00%
+Total executions done: Custom=462504, CFS=459489, Diff=0.66%
+Total edges found: Custom=735, CFS=765, Diff=-3.92%
+Average bitmap coverage: Custom=45.15%, CFS=46.99%, Diff=-1.84pp
+
+
+=== benchmark_results_optimized ===
+Test: optimized
+Boost duration: 3000000 us
+Boost weight: 3000
+Poll interval: 1500 ms
+Weight scale: 20
+Decay factor: 0.95
+
+== Overall Performance ==
+Total executions/sec: Custom=7782.73, CFS=7849.25, Diff=-0.85%
+Total paths found: Custom=827, CFS=664, Diff=24.55%
+Total crashes found: Custom=1, CFS=5, Diff=-80.00%
+Total executions done: Custom=457954, CFS=461661, Diff=-0.80%
+Total edges found: Custom=729, CFS=674, Diff=8.16%
+Average bitmap coverage: Custom=44.78%, CFS=41.40%, Diff=3.38pp
+
+
+=== benchmark_results_recommended_config ===
+Test: recommended_config
+Boost duration: 1000000 us
+Boost weight: 1000
+Poll interval: 1000 ms
+Weight scale: 20
+Decay factor: 0.99
+
+== Overall Performance ==
+Total executions/sec: Custom=7696.19, CFS=7763.88, Diff=-0.87%
+Total paths found: Custom=1770, CFS=1713, Diff=3.33%
+Total crashes found: Custom=5, CFS=6, Diff=-16.67%
+Total executions done: Custom=2299390, CFS=2315879, Diff=-0.71%
+Total edges found: Custom=1003, CFS=983, Diff=2.03%
+Average bitmap coverage: Custom=61.61%, CFS=60.38%, Diff=1.23pp
+
+
+=== benchmark_results_weight_scale ===
+Test: weight_scale
+Boost duration: 1000000 us
+Boost weight: 1000
+Poll interval: 1000 ms
+Weight scale: 20
+Decay factor: 0.99
+
+== Overall Performance ==
+Total executions/sec: Custom=7837.97, CFS=7862.68, Diff=-0.31%
+Total paths found: Custom=682, CFS=728, Diff=-6.32%
+Total crashes found: Custom=1, CFS=5, Diff=-80.00%
+Total executions done: Custom=461604, CFS=462454, Diff=-0.18%
+Total edges found: Custom=681, CFS=658, Diff=3.50%
+Average bitmap coverage: Custom=41.83%, CFS=40.42%, Diff=1.41pp
+
+

@@ -1,0 +1,51 @@
+=== AFL++ Scheduler Comparison Report ===
+
+== Overall Performance ==
+Total executions/sec: Custom=1702.59, CFS=1665.81, Diff=2.21%
+Total paths found: Custom=306, CFS=337, Diff=-9.20%
+Total crashes found: Custom=0, CFS=0, Diff=0.00%
+Total executions done: Custom=108637, CFS=106374, Diff=2.13%
+Total edges found: Custom=512, CFS=518, Diff=-1.16%
+Average bitmap coverage: Custom=31.45%, CFS=31.82%, Diff=-0.37pp
+
+== Instance Performance ==
+
+=== fuzzer1 ===
+Executions/sec: Custom=400.31, CFS=405.81, Diff=-1.36%
+Paths found: Custom=65, CFS=90, Diff=-27.78%
+Crashes found: Custom=0, CFS=0, Diff=0.00%
+Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
+Total executions: Custom=26752, CFS=27142, Diff=-1.44%
+Edges found: Custom=138, CFS=145, Diff=-4.83%
+Bitmap coverage: Custom=33.91%, CFS=35.63%, Diff=-1.72pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
+
+=== fuzzer2 ===
+Executions/sec: Custom=441.60, CFS=422.67, Diff=4.48%
+Paths found: Custom=76, CFS=82, Diff=-7.32%
+Crashes found: Custom=0, CFS=0, Diff=0.00%
+Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
+Total executions: Custom=28641, CFS=27432, Diff=4.41%
+Edges found: Custom=125, CFS=125, Diff=0.00%
+Bitmap coverage: Custom=30.71%, CFS=30.71%, Diff=0.00pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
+
+=== fuzzer3 ===
+Executions/sec: Custom=434.48, CFS=425.77, Diff=2.05%
+Paths found: Custom=96, CFS=107, Diff=-10.28%
+Crashes found: Custom=0, CFS=0, Diff=0.00%
+Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
+Total executions: Custom=27317, CFS=26773, Diff=2.03%
+Edges found: Custom=126, CFS=126, Diff=0.00%
+Bitmap coverage: Custom=30.96%, CFS=30.96%, Diff=0.00pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
+
+=== fuzzer4 ===
+Executions/sec: Custom=426.20, CFS=411.56, Diff=3.56%
+Paths found: Custom=69, CFS=58, Diff=18.97%
+Crashes found: Custom=0, CFS=0, Diff=0.00%
+Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
+Total executions: Custom=25927, CFS=25027, Diff=3.60%
+Edges found: Custom=123, CFS=122, Diff=0.82%
+Bitmap coverage: Custom=30.22%, CFS=29.98%, Diff=0.24pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp

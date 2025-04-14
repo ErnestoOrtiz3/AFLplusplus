@@ -1,0 +1,1 @@
+Usage: /home/ernesto/Documents/AFLplusplus/afl_scheduler/compare_results.py <custom_scheduler_dir> <cfs_scheduler_dir> <stats_dir>

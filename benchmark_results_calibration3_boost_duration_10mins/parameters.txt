@@ -1,0 +1,6 @@
+Test: calibration3_boost_duration
+Boost duration: 3000000 us
+Boost weight: 1000
+Poll interval: 1000 ms
+Weight scale: 10
+Decay factor: 0.99

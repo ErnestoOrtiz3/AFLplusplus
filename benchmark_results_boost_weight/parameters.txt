@@ -1,0 +1,6 @@
+Test: boost_weight
+Boost duration: 1000000 us
+Boost weight: 3000
+Poll interval: 1000 ms
+Weight scale: 10
+Decay factor: 0.99

@@ -1,0 +1,52 @@
+=== AFL++ Status ===
+/home/ernesto/Documents/AFLplusplus/afl-whatsup status check tool for afl-fuzz by Michal Zalewski
+
+Summary stats
+=============
+
+        Fuzzers alive : 0
+       Dead or remote : 4 (excluded from stats)
+       Total run time : 0 seconds
+          Total execs : 0 thousands
+     Cumulative speed : 0 execs/sec
+        Pending items : 0 faves, 0 total
+     Coverage reached : 50.12%
+        Crashes saved : 0
+          Hangs saved : 0
+ Cycles without finds : 4/0/0/0
+   Time without finds : 0
+
+
+=== Individual Fuzzer Stats ===
+
+--- main ---
+cycles_done       : 42
+execs_done        : 569816
+execs_per_sec     : 1904.21
+stability         : 100.00%
+bitmap_cvg        : 50.12%
+edges_found       : 204
+
+--- secondary1 ---
+cycles_done       : 8
+execs_done        : 578711
+execs_per_sec     : 1934.09
+stability         : 100.00%
+bitmap_cvg        : 50.12%
+edges_found       : 204
+
+--- secondary2 ---
+cycles_done       : 5
+execs_done        : 575243
+execs_per_sec     : 1922.34
+stability         : 100.00%
+bitmap_cvg        : 50.12%
+edges_found       : 204
+
+--- secondary3 ---
+cycles_done       : 3
+execs_done        : 552221
+execs_per_sec     : 1845.37
+stability         : 100.00%
+bitmap_cvg        : 50.12%
+edges_found       : 204

@@ -1,0 +1,14 @@
+=== Parameterized Scheduler Test Results ===
+Test ID: test_20250413_151414_d3000000_w3000_p1500_s20_f0.95
+
+Parameters:
+  Boost duration: 3000000 us
+  Boost weight: 3000
+  Poll interval: 1500 ms
+  Weight scale factor: 20
+  Decay factor: 0.95
+
+Results:
+  Total executions: Custom=0, CFS=108471, Diff=-100.00%
+  Total paths found: Custom=0, CFS=360, Diff=-100.00%
+  Total crashes found: Custom=0, CFS=0, Diff=%

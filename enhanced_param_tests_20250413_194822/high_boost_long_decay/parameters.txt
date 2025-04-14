@@ -1,0 +1,6 @@
+Test: high_boost_long_decay
+Boost duration: 1000000 us
+Boost weight: 3000
+Boost decay: 5000000 us
+Time slice: 20000 us
+Minimum time slice: 5000 us

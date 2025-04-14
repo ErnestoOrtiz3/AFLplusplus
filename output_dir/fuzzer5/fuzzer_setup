@@ -1,0 +1,6 @@
+# environment variables:
+AFL_CUSTOM_INFO_PROGRAM=./test_target
+AFL_CUSTOM_INFO_PROGRAM_ARGV=@@
+AFL_CUSTOM_INFO_OUT=output_dir/fuzzer5
+# command line:
+'./afl-fuzz' '-i' 'input_dir' '-o' 'output_dir' '-S' 'fuzzer5' './test_target' '@@'
