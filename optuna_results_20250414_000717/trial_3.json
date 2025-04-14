@@ -1,0 +1,28 @@
+{
+  "trial": 3,
+  "params": {
+    "boost_duration": 1000000,
+    "boost_weight": 3400,
+    "boost_decay": 4500000,
+    "slice_us": 50000,
+    "slice_min_us": 7000
+  },
+  "metrics": {
+    "execs_diff": -0.68,
+    "paths_diff": -5.69,
+    "crashes_diff": -35.71,
+    "edges_diff": -2.92,
+    "bitmap_diff": -1.48,
+    "custom_execs": 1731.05,
+    "cfs_execs": 1742.86,
+    "custom_paths": 1327,
+    "cfs_paths": 1407,
+    "custom_crashes": 9,
+    "cfs_crashes": 14,
+    "custom_edges": 799,
+    "cfs_edges": 823,
+    "custom_bitmap": 49.08,
+    "cfs_bitmap": 50.55
+  },
+  "score": -396.51000000000005
+}

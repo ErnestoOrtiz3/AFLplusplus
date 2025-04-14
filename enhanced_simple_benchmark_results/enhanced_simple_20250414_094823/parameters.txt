@@ -1,0 +1,13 @@
+Test ID: enhanced_simple_20250414_094823
+Duration: 15 minutes
+Number of instances: 4
+Target program: ./complex_target_afl
+Target arguments: @@
+Memory limit: none
+Timeout: 7500+
+Scheduler order: custom_first
+Boost duration: 500000 us
+Boost weight: 2100
+Boost decay period: 2000000 us
+Time slice: 20000 us
+Minimum time slice: 4000 us
