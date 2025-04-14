@@ -1,0 +1,58 @@
+# AFL++ CPU Scheduler Makefile with Parameterized Components
+
+# Compiler and flags
+CC = gcc
+CFLAGS = -Wall -Werror -O2
+LDFLAGS = -lbpf -lelf -lm
+
+# BPF compiler
+CLANG ?= clang
+LLVM_STRIP ?= llvm-strip
+BPFTOOL ?= bpftool
+
+# SCX path - adjust this to point to your SCX installation
+SCX_PATH ?= ../scx
+
+# Source files
+MONITOR_PARAM_SRC = afl_monitor_param.c
+SCHED_LOADER_PARAM_SRC = afl_sched_loader_param.c
+BPF_PARAM_SRC = bpf/afl_sched_param.bpf.c
+
+# Output files
+MONITOR_PARAM_BIN = afl_monitor_param
+SCHED_LOADER_PARAM_BIN = afl_sched_loader_param
+BPF_PARAM_OBJ = bpf/afl_sched_param.bpf.o
+SKEL_PARAM_H = afl_sched_param.skel.h
+
+# Default target
+all: $(MONITOR_PARAM_BIN) $(SCHED_LOADER_PARAM_BIN)
+
+# Build parameterized monitor daemon
+$(MONITOR_PARAM_BIN): $(MONITOR_PARAM_SRC)
+$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+
+# Build BPF object file
+$(BPF_PARAM_OBJ): $(BPF_PARAM_SRC)
+$(CLANG) -g -O2 -target bpf \
+clude \
+$@
+
+# Generate skeleton header
+$(SKEL_PARAM_H): $(BPF_PARAM_OBJ)
+$(BPFTOOL) gen skeleton $< > $@
+
+# Build parameterized scheduler loader
+$(SCHED_LOADER_PARAM_BIN): $(SCHED_LOADER_PARAM_SRC) $(SKEL_PARAM_H)
+$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+
+# Clean
+clean:
+rm -f $(MONITOR_PARAM_BIN) $(SCHED_LOADER_PARAM_BIN) $(BPF_PARAM_OBJ) $(SKEL_PARAM_H)
+
+# Install
+install: all
+install -m 755 $(MONITOR_PARAM_BIN) /usr/local/bin/
+install -m 755 $(SCHED_LOADER_PARAM_BIN) /usr/local/bin/
+install -m 755 afl_sched_ctl_param.sh /usr/local/bin/afl_sched_ctl.sh
+
+.PHONY: all clean install
