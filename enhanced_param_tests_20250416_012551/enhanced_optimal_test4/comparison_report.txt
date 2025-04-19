@@ -1,0 +1,51 @@
+=== AFL++ Scheduler Comparison Report ===
+
+== Overall Performance ==
+Total executions/sec: Custom=1728.13, CFS=1759.69, Diff=-1.79%
+Total paths found: Custom=1971, CFS=1800, Diff=9.50%
+Total crashes found: Custom=37, CFS=47, Diff=-21.28%
+Total executions done: Custom=3117030, CFS=3173919, Diff=-1.79%
+Total edges found: Custom=1022, CFS=1024, Diff=-0.20%
+Average bitmap coverage: Custom=62.78%, CFS=62.89%, Diff=-0.12pp
+
+== Instance Performance ==
+
+=== fuzzer1 ===
+Executions/sec: Custom=418.43, CFS=436.49, Diff=-4.14%
+Paths found: Custom=484, CFS=453, Diff=6.84%
+Crashes found: Custom=12, CFS=15, Diff=-20.00%
+Queue cycles: Custom=48.00, CFS=37.00, Diff=29.73%
+Total executions: Custom=755988, CFS=788605, Diff=-4.14%
+Edges found: Custom=256, CFS=257, Diff=-0.39%
+Bitmap coverage: Custom=62.90%, CFS=63.14%, Diff=-0.24pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
+
+=== fuzzer2 ===
+Executions/sec: Custom=436.72, CFS=440.73, Diff=-0.91%
+Paths found: Custom=463, CFS=454, Diff=1.98%
+Crashes found: Custom=8, CFS=13, Diff=-38.46%
+Queue cycles: Custom=8.00, CFS=4.00, Diff=100.00%
+Total executions: Custom=788236, CFS=795392, Diff=-0.90%
+Edges found: Custom=256, CFS=255, Diff=0.39%
+Bitmap coverage: Custom=62.90%, CFS=62.65%, Diff=0.25pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
+
+=== fuzzer3 ===
+Executions/sec: Custom=439.16, CFS=442.65, Diff=-0.79%
+Paths found: Custom=514, CFS=452, Diff=13.72%
+Crashes found: Custom=9, CFS=8, Diff=12.50%
+Queue cycles: Custom=4.00, CFS=4.00, Diff=0.00%
+Total executions: Custom=791659, CFS=798000, Diff=-0.79%
+Edges found: Custom=254, CFS=255, Diff=-0.39%
+Bitmap coverage: Custom=62.41%, CFS=62.65%, Diff=-0.24pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
+
+=== fuzzer4 ===
+Executions/sec: Custom=433.82, CFS=439.82, Diff=-1.36%
+Paths found: Custom=510, CFS=441, Diff=15.65%
+Crashes found: Custom=8, CFS=11, Diff=-27.27%
+Queue cycles: Custom=6.00, CFS=6.00, Diff=0.00%
+Total executions: Custom=781147, CFS=791922, Diff=-1.36%
+Edges found: Custom=256, CFS=257, Diff=-0.39%
+Bitmap coverage: Custom=62.90%, CFS=63.14%, Diff=-0.24pp
+Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp

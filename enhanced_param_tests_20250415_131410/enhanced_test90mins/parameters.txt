@@ -1,0 +1,6 @@
+Test: enhanced_test90mins
+Boost duration: 500000 us
+Boost weight: 600
+Boost decay: 5000000 us
+Time slice: 10000 us
+Minimum time slice: 2000 us

@@ -1,0 +1,7 @@
+# environment variables:
+AFL_CUSTOM_INFO_PROGRAM=./complex_target_afl
+AFL_CUSTOM_INFO_PROGRAM_ARGV=@@
+AFL_CUSTOM_INFO_OUT=enhanced_simple_benchmark_results/enhanced_simple_20250415_131410/cfs/fuzzer1
+AFL_NO_AFFINITY=1
+# command line:
+'/home/ernesto/Documents/AFLplusplus/afl-fuzz' '-i' '/home/ernesto/Documents/AFLplusplus/original_seeds' '-o' 'enhanced_simple_benchmark_results/enhanced_simple_20250415_131410/cfs' '-M' 'fuzzer1' '-t' '7500+' '-m' 'none' '--' './complex_target_afl' '@@'
