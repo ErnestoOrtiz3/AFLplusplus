@@ -1,6 +1,0 @@
-Test: trial_10
-Boost duration: 5000000 us
-Boost weight: 100
-Boost decay: 1000000 us
-Time slice: 5000 us
-Minimum time slice: 4000 us

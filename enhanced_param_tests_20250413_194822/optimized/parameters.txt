@@ -1,6 +1,0 @@
-Test: optimized
-Boost duration: 3000000 us
-Boost weight: 3000
-Boost decay: 5000000 us
-Time slice: 30000 us
-Minimum time slice: 5000 us
