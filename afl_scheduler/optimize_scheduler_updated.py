@@ -30,10 +30,23 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+'''
+Configures the Python logging system with logging.basicConfig()
+Sets the logging level to INFO, which will capture informational messages, warnings, errors, and critical issues (but not debug messages)
+Defines a format for log messages that includes:
+Timestamp (%(asctime)s)
+Log level (%(levelname)s)
+The actual message (%(message)s)
+Sets up two handlers for the logs:
+A FileHandler that writes logs to "scheduler_optimization.log"
+A StreamHandler that outputs logs to the console (standard output)
+Creates a logger instance named after the current module (__name__)
+'''
+
 
 # Configuration
-DEFAULT_TRIALS = 20
-DEFAULT_DURATION = 20  # minutes per benchmark
+DEFAULT_TRIALS = 2
+DEFAULT_DURATION = 1  # minutes per benchmark
 RESULTS_DIR = f"optuna_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
