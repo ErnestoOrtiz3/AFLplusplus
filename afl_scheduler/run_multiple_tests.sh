@@ -5,7 +5,7 @@
 #
 
 # Configuration
-NUM_RUNS=9
+NUM_RUNS=3
 TEST_NAME="enhanced_optimal_test"
 BOOST_DURATION=500000
 BOOST_WEIGHT=600
@@ -106,8 +106,15 @@ for metric in "${metrics[@]}"; do
     cfs_avg=$(echo "$cfs_values" | awk '{ sum += $1; n++ } END { if (n > 0) print sum / n; else print "N/A" }')
     diff_avg=$(echo "$diff_values" | awk '{ sum += $1; n++ } END { if (n > 0) print sum / n; else print "N/A" }')
     
+    # Calculate difference percentage from the averages directly
+    if [[ "$custom_avg" != "N/A" && "$cfs_avg" != "N/A" && "$cfs_avg" != "0" ]]; then
+        recalc_diff=$(echo "scale=4; ($custom_avg - $cfs_avg) * 100 / $cfs_avg" | bc)
+    else
+        recalc_diff="N/A"
+    fi
+    
     # Add to summary
-    echo "$metric: Custom=$custom_avg, CFS=$cfs_avg, Diff=$diff_avg%" >> "$RESULTS_DIR/summary.txt"
+    echo "$metric: Custom=$custom_avg, CFS=$cfs_avg, Diff=$diff_avg% (Recalculated Diff=$recalc_diff%)" >> "$RESULTS_DIR/summary.txt"
 done
 
 echo ""

@@ -87,7 +87,7 @@ def generate_report(custom_dir, cfs_dir, stats_dir):
     report.append(f"Total paths found: Custom={custom_total_paths}, CFS={cfs_total_paths}, Diff={paths_diff:.2f}%")
     report.append(f"Total crashes found: Custom={custom_total_crashes}, CFS={cfs_total_crashes}, Diff={crashes_diff:.2f}%")
     
-    # Add additional metrics if available
+    # Add additional metrics if available (percentage differences)
     try:
         custom_total_execs_done = sum(int(stats.get('execs_done', 0)) for stats in custom_stats.values())
         cfs_total_execs_done = sum(int(stats.get('execs_done', 0)) for stats in cfs_stats.values())
