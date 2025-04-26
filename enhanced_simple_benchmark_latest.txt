@@ -1,51 +1,51 @@
 === AFL++ Scheduler Comparison Report ===
 
 == Overall Performance ==
-Total executions/sec: Custom=1809.43, CFS=1900.69, Diff=-4.80%
-Total paths found: Custom=348, CFS=370, Diff=-5.95%
+Total executions/sec: Custom=1586.45, CFS=1561.24, Diff=1.61%
+Total paths found: Custom=339, CFS=276, Diff=22.83%
 Total crashes found: Custom=0, CFS=0, Diff=0.00%
-Total executions done: Custom=115497, CFS=121194, Diff=-4.70%
-Total edges found: Custom=552, CFS=538, Diff=2.60%
-Average bitmap coverage: Custom=33.91%, CFS=33.05%, Diff=0.86pp
+Total executions done: Custom=196409, CFS=193261, Diff=1.63%
+Total edges found: Custom=513, CFS=469, Diff=9.38%
+Average bitmap coverage: Custom=31.51%, CFS=28.81%, Diff=2.70pp
 
 == Instance Performance ==
 
 === fuzzer1 ===
-Executions/sec: Custom=446.90, CFS=445.10, Diff=0.40%
-Paths found: Custom=88, CFS=59, Diff=49.15%
+Executions/sec: Custom=373.97, CFS=396.23, Diff=-5.62%
+Paths found: Custom=58, CFS=28, Diff=107.14%
 Crashes found: Custom=0, CFS=0, Diff=0.00%
 Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
-Total executions: Custom=29861, CFS=29742, Diff=0.40%
-Edges found: Custom=170, CFS=130, Diff=30.77%
-Bitmap coverage: Custom=41.77%, CFS=31.94%, Diff=9.83pp
+Total executions: Custom=47438, CFS=50226, Diff=-5.55%
+Edges found: Custom=129, CFS=91, Diff=41.76%
+Bitmap coverage: Custom=31.70%, CFS=22.36%, Diff=9.34pp
 Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
 
 === fuzzer2 ===
-Executions/sec: Custom=463.26, CFS=476.08, Diff=-2.69%
-Paths found: Custom=76, CFS=102, Diff=-25.49%
+Executions/sec: Custom=409.35, CFS=387.42, Diff=5.66%
+Paths found: Custom=105, CFS=68, Diff=54.41%
 Crashes found: Custom=0, CFS=0, Diff=0.00%
 Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
-Total executions: Custom=30018, CFS=30867, Diff=-2.75%
-Edges found: Custom=125, CFS=134, Diff=-6.72%
-Bitmap coverage: Custom=30.71%, CFS=32.92%, Diff=-2.21pp
+Total executions: Custom=51094, CFS=48351, Diff=5.67%
+Edges found: Custom=130, CFS=123, Diff=5.69%
+Bitmap coverage: Custom=31.94%, CFS=30.22%, Diff=1.72pp
 Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
 
 === fuzzer3 ===
-Executions/sec: Custom=451.53, CFS=491.95, Diff=-8.22%
-Paths found: Custom=101, CFS=112, Diff=-9.82%
+Executions/sec: Custom=403.24, CFS=388.39, Diff=3.82%
+Paths found: Custom=91, CFS=100, Diff=-9.00%
 Crashes found: Custom=0, CFS=0, Diff=0.00%
 Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
-Total executions: Custom=28392, CFS=30904, Diff=-8.13%
-Edges found: Custom=131, CFS=143, Diff=-8.39%
-Bitmap coverage: Custom=32.19%, CFS=35.14%, Diff=-2.95pp
+Total executions: Custom=49558, CFS=47670, Diff=3.96%
+Edges found: Custom=125, CFS=130, Diff=-3.85%
+Bitmap coverage: Custom=30.71%, CFS=31.94%, Diff=-1.23pp
 Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
 
 === fuzzer4 ===
-Executions/sec: Custom=447.74, CFS=487.56, Diff=-8.17%
-Paths found: Custom=83, CFS=97, Diff=-14.43%
+Executions/sec: Custom=399.89, CFS=389.20, Diff=2.75%
+Paths found: Custom=85, CFS=80, Diff=6.25%
 Crashes found: Custom=0, CFS=0, Diff=0.00%
 Queue cycles: Custom=0.00, CFS=0.00, Diff=0.00%
-Total executions: Custom=27226, CFS=29681, Diff=-8.27%
-Edges found: Custom=126, CFS=131, Diff=-3.82%
-Bitmap coverage: Custom=30.96%, CFS=32.19%, Diff=-1.23pp
+Total executions: Custom=48319, CFS=47014, Diff=2.78%
+Edges found: Custom=129, CFS=125, Diff=3.20%
+Bitmap coverage: Custom=31.70%, CFS=30.71%, Diff=0.99pp
 Stability: Custom=100.00%, CFS=100.00%, Diff=0.00pp
