@@ -134,11 +134,11 @@ def calculate_score(metrics, weights=None):
     """Calculate a weighted score from the metrics."""
     if weights is None:
         weights = {
-            'crashes_diff': 5.0,  # High weight for crashes
-            'paths_diff': 4.0,     # Medium-high weight for paths
-            'bitmap_diff': 3.0,    # Medium weight for coverage
-            'edges_diff': 2.0,     # Medium-low weight for edges
-            'execs_diff': 1.0      # Low weight for speed
+            'crashes_diff': 10.0,   # High weight for crashes
+            'paths_diff': 0.15,     # Medium-high weight for paths
+            'bitmap_diff': 3.43,    # Medium weight for coverage
+            'edges_diff': 0.14,     # Medium-low weight for edges
+            'execs_diff': 0.04      # Low weight for speed
         }
     
     # Calculate base score from percentage differences

@@ -15,6 +15,7 @@ import glob
 import logging
 import subprocess
 import numpy as np
+from numpy import float32, float64
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -81,11 +82,11 @@ PARAM_SPACE = {
 
 # Metric weights for composite score
 METRIC_WEIGHTS = {
-    'crashes_diff': 5.0,  # High weight for crashes
-    'paths_diff': 4.0,    # Medium-high weight for paths
-    'bitmap_diff': 3.0,   # Medium weight for coverage
-    'edges_diff': 2.0,    # Medium-low weight for edges
-    'execs_diff': 1.0     # Low weight for speed
+    'crashes_diff': 10.0,   # High weight for crashes
+    'paths_diff': 0.15,     # Medium-high weight for paths
+    'bitmap_diff': 3.43,    # Medium weight for coverage
+    'edges_diff': 0.14,     # Medium-low weight for edges
+    'execs_diff': 0.04      # Low weight for speed
 }
 
 def generate_random_parameters():
@@ -267,12 +268,19 @@ def calculate_score(metrics, weights=None):
 
 def save_trial_results(trial_num, params, metrics, score):
     """Save the results of a trial to disk."""
+    # Convert any NumPy types to native Python types for JSON serialization
+    serializable_params = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v
+                          for k, v in params.items()}
+
+    serializable_metrics = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v
+                           for k, v in metrics.items()}
+
     # Create a dictionary with all the information
     result = {
         'trial': trial_num,
-        'params': params,
-        'metrics': metrics,
-        'score': score,
+        'params': serializable_params,
+        'metrics': serializable_metrics,
+        'score': float(score),  # Ensure score is a native Python float
         'timestamp': datetime.now().isoformat()
     }
 
@@ -451,11 +459,21 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
     logger.info(f"Results will be saved to {RESULTS_DIR}")
 
     # Save configuration
+    # Create a serializable version of PARAM_SPACE (convert type objects to strings)
+    serializable_param_space = {}
+    for param, config in PARAM_SPACE.items():
+        serializable_param_space[param] = {
+            'min': config['min'],
+            'max': config['max'],
+            'step': config['step'],
+            'type': config['type'].__name__  # Convert type to string
+        }
+
     config = {
         'n_trials': n_trials,
         'duration': duration,
         'initial_samples': initial_samples,
-        'param_space': PARAM_SPACE,
+        'param_space': serializable_param_space,
         'metric_weights': METRIC_WEIGHTS,
         'start_time': datetime.now().isoformat()
     }
@@ -538,7 +556,8 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
         with open(os.path.join(RESULTS_DIR, "best_parameters.json"), 'w') as f:
             json.dump({
                 'score': float(best_score),
-                'params': best_params
+                'params': {k: float(v) if isinstance(v, (np.float32, np.float64)) else v
+                          for k, v in best_params.items()}
             }, f, indent=2)
     else:
         logger.error("Optimization failed: No valid results obtained")
