@@ -37,9 +37,9 @@ logging.basicConfig(
 logger = logging.getLogger("gp_optimizer")
 
 # Constants
-DEFAULT_TRIALS = 30
-DEFAULT_DURATION = 6  # minutes per benchmark
-DEFAULT_INITIAL_SAMPLES = 10
+DEFAULT_TRIALS = 2
+DEFAULT_DURATION = 2  # minutes per benchmark
+DEFAULT_INITIAL_SAMPLES = 1
 DEFAULT_REPLICATIONS = 2  # Number of replications for each parameter combination
 
 # Create results directory
@@ -298,7 +298,7 @@ def calculate_score(metrics, weights=None):
 
     # Calculate score from raw custom metrics
     score = sum(metrics[metric] * weight for metric, weight in weights.items() if metric in metrics)
-    
+
     return score
 
 def save_trial_results(trial_num, params, metrics, score, all_metrics=None, all_scores=None):
@@ -481,20 +481,17 @@ def expected_improvement(X, model, y_best, xi=0.01):
 
     return ei
 
-def propose_next_parameters(X_sample, y_sample, bounds):
+def train_gp_model(X_sample, y_sample):
     """
-    Propose the next parameters to evaluate using GP and Expected Improvement.
+    Train a Gaussian Process model on the provided data.
 
     Args:
-        X_sample: Previously sampled parameters (normalized)
+        X_sample: Parameter vectors (normalized)
         y_sample: Observed scores
-        bounds: Parameter bounds (normalized)
 
     Returns:
-        Next parameters to evaluate (normalized)
+        Tuple of (trained GP model, score shift value, shifted y values)
     """
-    from scipy.optimize import minimize
-
     # Shift scores to ensure they're positive (helps with GP stability)
     # Add a constant to all scores to make them positive
     min_score = min(y_sample)
@@ -526,6 +523,26 @@ def propose_next_parameters(X_sample, y_sample, bounds):
     # Log the learned kernel parameters
     logger.info(f"Trained GP model with kernel: {model.kernel_}")
     logger.info(f"Kernel hyperparameters: {model.kernel_.get_params()}")
+
+    return model, score_shift, shifted_y_sample
+
+
+def propose_next_parameters(X_sample, y_sample, bounds):
+    """
+    Propose the next parameters to evaluate using GP and Expected Improvement.
+
+    Args:
+        X_sample: Previously sampled parameters (normalized)
+        y_sample: Observed scores
+        bounds: Parameter bounds (normalized)
+
+    Returns:
+        Next parameters to evaluate (normalized)
+    """
+    from scipy.optimize import minimize
+
+    # Train the GP model
+    model, _, shifted_y_sample = train_gp_model(X_sample, y_sample)
 
     # Find the best observed value (using shifted scores)
     y_best = shifted_y_sample.max()
@@ -559,6 +576,72 @@ def propose_next_parameters(X_sample, y_sample, bounds):
     logger.info(f"Best expected improvement: {best_ei}")
 
     return best_x
+
+
+def predict_optimal_parameters(X_sample, y_sample, bounds):
+    """
+    Predict the optimal parameters using the trained GP model.
+
+    This function trains a GP model on all collected data and then
+    finds the parameter combination that maximizes the predicted score.
+
+    Args:
+        X_sample: All sampled parameters (normalized)
+        y_sample: All observed scores
+        bounds: Parameter bounds (normalized)
+
+    Returns:
+        Tuple of (optimal parameters dict, predicted score)
+    """
+    from scipy.optimize import minimize
+
+    logger.info("Predicting optimal parameters using the trained GP model...")
+
+    # Train the GP model on all data
+    model, score_shift, _ = train_gp_model(X_sample, y_sample)
+
+    # Define the negative predicted score function (for minimization)
+    def negative_prediction(x):
+        x_reshaped = x.reshape(1, -1)
+        pred, _ = model.predict(x_reshaped, return_std=True)
+        return -pred[0]  # Negative because we're minimizing
+
+    # Optimize to find the parameters that maximize the predicted score
+    best_pred = np.inf
+    best_x = None
+
+    # Try multiple random starting points for more reliable optimization
+    n_restarts = 30  # More restarts for final prediction
+    for _ in range(n_restarts):
+        # Random starting point
+        x0 = np.random.rand(len(bounds))
+
+        # Optimize from this starting point
+        result = minimize(
+            negative_prediction,
+            x0,
+            bounds=bounds,
+            method='L-BFGS-B'
+        )
+
+        if result.fun < best_pred:
+            best_pred = result.fun
+            best_x = result.x
+
+    # Convert normalized parameters to actual values
+    optimal_params = {}
+    for i, param in enumerate(sorted(PARAM_SPACE.keys())):
+        optimal_params[param] = best_x[i]
+
+    optimal_params = denormalize_parameters(optimal_params)
+
+    # Calculate the predicted score (removing the shift)
+    predicted_score = -best_pred - score_shift
+
+    logger.info(f"Predicted optimal parameters: {optimal_params}")
+    logger.info(f"Predicted score: {predicted_score}")
+
+    return optimal_params, predicted_score
 
 def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEFAULT_INITIAL_SAMPLES, replications=DEFAULT_REPLICATIONS):
     """Main function to run the optimization.
@@ -661,14 +744,38 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
 
     # Final report
     if len(y_sample) > 0:
+        # Find the best observed parameters
         best_idx = np.argmax(y_sample)
         best_score = y_sample[best_idx]
         best_params = vector_to_parameters(X_sample[best_idx] * np.array([PARAM_SPACE[p]['max'] - PARAM_SPACE[p]['min'] for p in sorted(PARAM_SPACE.keys())]) + np.array([PARAM_SPACE[p]['min'] for p in sorted(PARAM_SPACE.keys())]))
 
-        logger.info(f"Optimization completed. Best score: {best_score}")
-        logger.info(f"Best parameters: {best_params}")
+        logger.info(f"Optimization completed. Best observed score: {best_score}")
+        logger.info(f"Best observed parameters: {best_params}")
 
-        # Save best parameters to a separate file
+        # Predict the optimal parameters using the GP model
+        bounds = [(0, 1) for _ in range(len(PARAM_SPACE))]
+        optimal_params, predicted_score = predict_optimal_parameters(X_sample, y_sample, bounds)
+
+        logger.info(f"Predicted optimal score: {predicted_score}")
+        logger.info(f"Predicted optimal parameters: {optimal_params}")
+
+        # Save best observed parameters to a separate file
+        with open(os.path.join(RESULTS_DIR, "best_observed_parameters.json"), 'w') as f:
+            json.dump({
+                'score': float(best_score),
+                'params': {k: float(v) if isinstance(v, (np.float32, np.float64)) else v
+                          for k, v in best_params.items()}
+            }, f, indent=2)
+
+        # Save predicted optimal parameters to a separate file
+        with open(os.path.join(RESULTS_DIR, "predicted_optimal_parameters.json"), 'w') as f:
+            json.dump({
+                'predicted_score': float(predicted_score),
+                'params': {k: float(v) if isinstance(v, (np.float32, np.float64)) else v
+                          for k, v in optimal_params.items()}
+            }, f, indent=2)
+
+        # For backward compatibility, save the best observed parameters as best_parameters.json
         with open(os.path.join(RESULTS_DIR, "best_parameters.json"), 'w') as f:
             json.dump({
                 'score': float(best_score),
@@ -784,7 +891,7 @@ def plot_parameter_importance(results_dir=None):
     logger.info(f"Parameter importance plot saved to {os.path.join(results_dir, 'parameter_importance.png')}")
 
 def plot_best_trial_details(results_dir=None):
-    """Create a detailed visualization of the best trial."""
+    """Create a detailed visualization of the best trial and predicted optimal parameters."""
     if results_dir is None:
         results_dir = RESULTS_DIR
 
@@ -800,11 +907,23 @@ def plot_best_trial_details(results_dir=None):
     best_idx = df['score'].idxmax()
     best_trial = df.loc[best_idx]
 
-    # Create figure with subplots
-    fig = plt.figure(figsize=(14, 10))
-    gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[1, 1])
+    # Load the predicted optimal parameters if available
+    predicted_optimal_path = os.path.join(results_dir, "predicted_optimal_parameters.json")
+    has_predicted_optimal = os.path.exists(predicted_optimal_path)
 
-    # 1. Parameter values
+    if has_predicted_optimal:
+        with open(predicted_optimal_path, 'r') as f:
+            predicted_optimal = json.load(f)
+
+    # Create figure with subplots
+    fig = plt.figure(figsize=(14, 12))  # Increased height to accommodate parameter comparison
+
+    if has_predicted_optimal:
+        gs = gridspec.GridSpec(3, 2, width_ratios=[1, 1], height_ratios=[1, 1, 1])
+    else:
+        gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[1, 1])
+
+    # 1. Parameter values for best trial
     ax1 = plt.subplot(gs[0, 0])
     params = list(PARAM_SPACE.keys())
     param_values = [best_trial[p] for p in params]
@@ -884,8 +1003,41 @@ def plot_best_trial_details(results_dir=None):
         ax4.text(0.5, 0.5, 'No significant score components',
                 ha='center', va='center', fontsize=12)
 
-    # Add overall title
-    plt.suptitle(f'Best Trial Details (Score: {best_trial["score"]:.2f})', fontsize=16)
+    # 5. Parameter comparison (if predicted optimal parameters are available)
+    if has_predicted_optimal:
+        ax5 = plt.subplot(gs[2, :])  # Span both columns
+
+        # Get parameter values
+        best_values = [best_trial[p] for p in params]
+        optimal_values = [predicted_optimal['params'][p] for p in params]
+
+        # Set up the bar positions
+        x = np.arange(len(params))
+        width = 0.35
+
+        # Create grouped bar chart
+        ax5.bar(x - width/2, best_values, width, label='Best Observed', color='skyblue')
+        ax5.bar(x + width/2, optimal_values, width, label='Predicted Optimal', color='orange')
+
+        # Add labels and title
+        ax5.set_xticks(x)
+        ax5.set_xticklabels(params)
+        ax5.set_title('Parameter Comparison: Best Observed vs. Predicted Optimal', fontsize=14)
+        ax5.legend()
+
+        # Add value labels
+        for i, v in enumerate(best_values):
+            ax5.text(i - width/2, v + max(best_values) * 0.02, str(int(v)), ha='center', va='bottom', fontsize=9)
+
+        for i, v in enumerate(optimal_values):
+            ax5.text(i + width/2, v + max(optimal_values) * 0.02, str(int(v)), ha='center', va='bottom', fontsize=9)
+
+        # Add predicted score to the title
+        predicted_score = predicted_optimal.get('predicted_score', 0)
+        plt.suptitle(f'Best Trial (Score: {best_trial["score"]:.2f}) vs. Predicted Optimal (Score: {predicted_score:.2f})', fontsize=16)
+    else:
+        # Add overall title without predicted optimal
+        plt.suptitle(f'Best Trial Details (Score: {best_trial["score"]:.2f})', fontsize=16)
 
     # Save the figure
     plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust for the suptitle

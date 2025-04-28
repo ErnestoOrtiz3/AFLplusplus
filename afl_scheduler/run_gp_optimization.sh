@@ -10,8 +10,8 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # Default parameters
-TRIALS=30
-DURATION=6
+TRIALS=2
+DURATION=2
 INITIAL_SAMPLES=10
 REPLICATIONS=2
 VISUALIZE_ONLY=false

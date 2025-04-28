@@ -84,12 +84,24 @@ The optimizer creates a results directory with:
 - `config.json`: Configuration used for the optimization
 - `all_trials.csv`: CSV file with all trial results
 - `trial_*.json`: Individual JSON files for each trial
-- `best_parameters.json`: The best parameters found
+- `best_observed_parameters.json`: The parameters that produced the highest score in any trial
+- `predicted_optimal_parameters.json`: The parameters predicted to be optimal by the GP model
+- `best_parameters.json`: Same as best_observed_parameters.json (for backward compatibility)
 - Visualization plots:
   - `optimization_history.png`: Score improvement over trials
   - `parameter_importance.png`: Correlation of parameters with score
-  - `best_trial_details.png`: Detailed visualization of the best trial
+  - `best_trial_details.png`: Detailed visualization of the best trial and predicted optimal parameters
   - `parameter_heatmap.png`: Relationships between parameter pairs
+
+### Best Observed vs. Predicted Optimal Parameters
+
+The optimizer provides two sets of "best" parameters:
+
+1. **Best Observed Parameters**: These are the parameters from the trial that produced the highest score during the optimization process. This is empirical data from an actual benchmark run.
+
+2. **Predicted Optimal Parameters**: These are the parameters that the Gaussian Process model predicts would produce the highest score, based on all the data collected during optimization. This prediction uses the GP model as a surrogate function to estimate the performance of parameter combinations that weren't actually tested.
+
+The predicted optimal parameters are particularly valuable because they represent the model's best guess at the true optimum after considering all trials, not just a lucky early result. These parameters are determined by finding the maximum of the GP model's predicted mean function across the entire parameter space.
 
 ## Scoring and Noise Handling
 
