@@ -53,13 +53,14 @@ sudo ./afl_scheduler/run_gp_optimization.sh
 - `--trials N`: Number of trials to run (default: 30)
 - `--duration N`: Duration of each benchmark in minutes (default: 10)
 - `--initial-samples N`: Number of initial random samples (default: 10)
+- `--replications N`: Number of replications for each parameter combination (default: 2)
 - `--visualize-only`: Only generate visualizations for existing results
 - `--results-dir DIR`: Specify a results directory to visualize (for --visualize-only)
 
 Example with custom settings:
 
 ```bash
-sudo ./afl_scheduler/run_gp_optimization.sh --trials 50 --duration 20 --initial-samples 15
+sudo ./afl_scheduler/run_gp_optimization.sh --trials 50 --duration 20 --initial-samples 15 --replications 3
 ```
 
 ### Visualizing Results Only
@@ -90,7 +91,7 @@ The optimizer creates a results directory with:
   - `best_trial_details.png`: Detailed visualization of the best trial
   - `parameter_heatmap.png`: Relationships between parameter pairs
 
-## Scoring
+## Scoring and Noise Handling
 
 The optimizer uses a composite score based on:
 
@@ -101,6 +102,18 @@ The optimizer uses a composite score based on:
 - Executions per second (low weight)
 
 The score is calculated as a weighted sum of the percentage differences between the custom scheduler and the CFS scheduler.
+
+### Noise Handling
+
+To handle the inherent noise in fuzzing benchmarks, the optimizer:
+
+1. **Runs multiple replications** of each parameter combination (default: 2)
+2. **Averages the scores** across replications to get a more reliable estimate
+3. **Shifts all scores** to positive values by adding a constant (500) to improve GP model stability
+4. **Uses explicit noise modeling** in the Gaussian Process with a WhiteKernel component
+5. **Tracks score variance** across replications to help identify unstable configurations
+
+This approach helps the optimizer make more reliable decisions in the presence of noisy benchmark results.
 
 ## Advanced Usage
 

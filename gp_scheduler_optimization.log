@@ -1,0 +1,74 @@
+2025-04-27 19:58:49,495 - INFO - Starting Gaussian Process optimization with 2 trials, 2 minutes per benchmark
+2025-04-27 19:58:49,496 - INFO - Using 1 replications for each parameter combination
+2025-04-27 19:58:49,496 - INFO - Results will be saved to gp_optimization_results_20250427_195849
+2025-04-27 19:58:49,496 - INFO - Starting initial random sampling (1 samples)
+2025-04-27 19:58:49,496 - INFO - Trial 1: Running benchmark with parameters: {'boost_duration': 3700000, 'boost_weight': 2100, 'boost_decay': 3000000, 'slice_us': 25000, 'slice_min_us': 1000} (1 replications)
+2025-04-27 19:58:49,497 - INFO - Starting replication 1/1
+2025-04-27 19:58:49,497 - INFO - Running command: sudo ./afl_scheduler/param_test_enhanced_fixed.sh custom gp_trial_1_rep_1 3700000 2100 3000000 25000 1000
+2025-04-27 19:58:59,383 - INFO - Benchmark replication 1 completed successfully
+2025-04-27 19:58:59,385 - INFO - Replication 1 score: 937.452
+2025-04-27 19:58:59,386 - INFO - Trial 1: Average score across 1 replications: 937.452
+2025-04-27 19:58:59,412 - INFO - Initial sample 1 completed with score: 937.452
+2025-04-27 19:58:59,412 - INFO - Starting Bayesian optimization loop
+2025-04-27 19:58:59,412 - INFO - Shifting scores by 500.0 to ensure positive values for GP stability
+2025-04-27 19:58:59,505 - INFO - Trained GP model with kernel: Matern(length_scale=0.165, nu=2.5) + WhiteKernel(noise_level=1.07e-05)
+2025-04-27 19:58:59,506 - INFO - Kernel hyperparameters: {'k1': Matern(length_scale=0.165, nu=2.5), 'k2': WhiteKernel(noise_level=1.07e-05), 'k1__length_scale': np.float64(0.1648044642797898), 'k1__length_scale_bounds': (0.01, 100.0), 'k1__nu': 2.5, 'k2__noise_level': np.float64(1.0670901213396018e-05), 'k2__noise_level_bounds': (1e-05, 10.0)}
+2025-04-27 19:58:59,574 - INFO - Best expected improvement: 0.39396435575137834
+2025-04-27 19:58:59,574 - INFO - Trial 2: Running benchmark with parameters: {'boost_decay': 1000000, 'boost_duration': 3500000, 'boost_weight': 3900, 'slice_min_us': 7000, 'slice_us': 45000} (1 replications)
+2025-04-27 19:58:59,574 - INFO - Starting replication 1/1
+2025-04-27 19:58:59,574 - INFO - Running command: sudo ./afl_scheduler/param_test_enhanced_fixed.sh custom gp_trial_2_rep_1 3500000 3900 1000000 45000 7000
+2025-04-27 19:59:00,572 - INFO - Benchmark replication 1 completed successfully
+2025-04-27 19:59:00,577 - INFO - Replication 1 score: 937.452
+2025-04-27 19:59:00,578 - INFO - Trial 2: Average score across 1 replications: 937.452
+2025-04-27 19:59:00,604 - INFO - Trial 2 completed with score: 937.452
+2025-04-27 19:59:00,604 - INFO - Best score so far: 937.452 with parameters: {'boost_decay': 3806122, 'boost_duration': 2100000, 'boost_weight': 2822, 'slice_min_us': 5000, 'slice_us': 5000}
+2025-04-27 19:59:00,605 - INFO - Optimization completed. Best score: 937.452
+2025-04-27 19:59:00,605 - INFO - Best parameters: {'boost_decay': 3806122, 'boost_duration': 2100000, 'boost_weight': 2822, 'slice_min_us': 5000, 'slice_us': 5000}
+2025-04-27 19:59:00,605 - INFO - Generating visualizations for results in gp_optimization_results_20250427_195849
+2025-04-27 19:59:01,224 - INFO - Optimization history plot saved to gp_optimization_results_20250427_195849/optimization_history.png
+2025-04-27 19:59:01,520 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,522 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,522 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,523 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,523 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,554 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,556 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,557 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,557 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,557 - WARNING - posx and posy should be finite values
+2025-04-27 19:59:01,660 - INFO - Parameter importance plot saved to gp_optimization_results_20250427_195849/parameter_importance.png
+2025-04-27 19:59:02,220 - INFO - Best trial details plot saved to gp_optimization_results_20250427_195849/best_trial_details.png
+2025-04-27 19:59:03,978 - INFO - Parameter heatmap saved to gp_optimization_results_20250427_195849/parameter_heatmap.png
+2025-04-27 19:59:03,979 - INFO - All visualizations generated successfully
+2025-04-27 20:00:36,949 - INFO - Starting Gaussian Process optimization with 2 trials, 2 minutes per benchmark
+2025-04-27 20:00:36,949 - INFO - Using 1 replications for each parameter combination
+2025-04-27 20:00:36,949 - INFO - Results will be saved to gp_optimization_results_20250427_200036
+2025-04-27 20:00:36,950 - INFO - Starting initial random sampling (1 samples)
+2025-04-27 20:00:36,950 - INFO - Trial 1: Running benchmark with parameters: {'boost_duration': 3600000, 'boost_weight': 1900, 'boost_decay': 500000, 'slice_us': 20000, 'slice_min_us': 10000} (1 replications)
+2025-04-27 20:00:36,950 - INFO - Starting replication 1/1
+2025-04-27 20:00:36,950 - INFO - Running command: sudo ./afl_scheduler/param_test_enhanced_fixed.sh custom gp_trial_1_rep_1 3600000 1900 500000 20000 10000
+2025-04-27 20:05:11,385 - INFO - Benchmark replication 1 completed successfully
+2025-04-27 20:05:11,387 - INFO - Replication 1 score: 577.366
+2025-04-27 20:05:11,388 - INFO - Trial 1: Average score across 1 replications: 577.366
+2025-04-27 20:05:11,397 - INFO - Initial sample 1 completed with score: 577.366
+2025-04-27 20:05:11,399 - INFO - Starting Bayesian optimization loop
+2025-04-27 20:05:11,399 - INFO - Shifting scores by 500.0 to ensure positive values for GP stability
+2025-04-27 20:05:11,485 - INFO - Trained GP model with kernel: Matern(length_scale=0.165, nu=2.5) + WhiteKernel(noise_level=1.07e-05)
+2025-04-27 20:05:11,486 - INFO - Kernel hyperparameters: {'k1': Matern(length_scale=0.165, nu=2.5), 'k2': WhiteKernel(noise_level=1.07e-05), 'k1__length_scale': np.float64(0.1648044642797898), 'k1__length_scale_bounds': (0.01, 100.0), 'k1__nu': 2.5, 'k2__noise_level': np.float64(1.0670901213396018e-05), 'k2__noise_level_bounds': (1e-05, 10.0)}
+2025-04-27 20:05:11,593 - INFO - Best expected improvement: 0.39396435577376104
+2025-04-27 20:05:11,594 - INFO - Trial 2: Running benchmark with parameters: {'boost_decay': 4000000, 'boost_duration': 3900000, 'boost_weight': 4600, 'slice_min_us': 7000, 'slice_us': 10000} (1 replications)
+2025-04-27 20:05:11,594 - INFO - Starting replication 1/1
+2025-04-27 20:05:11,594 - INFO - Running command: sudo ./afl_scheduler/param_test_enhanced_fixed.sh custom gp_trial_2_rep_1 3900000 4600 4000000 10000 7000
+2025-04-27 20:09:46,565 - INFO - Benchmark replication 1 completed successfully
+2025-04-27 20:09:46,566 - INFO - Replication 1 score: 712.441
+2025-04-27 20:09:46,567 - INFO - Trial 2: Average score across 1 replications: 712.441
+2025-04-27 20:09:46,572 - INFO - Trial 2 completed with score: 712.441
+2025-04-27 20:09:46,573 - INFO - Best score so far: 712.441 with parameters: {'boost_decay': 4000000, 'boost_duration': 3900000, 'boost_weight': 4600, 'slice_min_us': 7000, 'slice_us': 10000}
+2025-04-27 20:09:46,573 - INFO - Optimization completed. Best score: 712.441
+2025-04-27 20:09:46,573 - INFO - Best parameters: {'boost_decay': 4000000, 'boost_duration': 3900000, 'boost_weight': 4600, 'slice_min_us': 7000, 'slice_us': 10000}
+2025-04-27 20:09:46,573 - INFO - Generating visualizations for results in gp_optimization_results_20250427_200036
+2025-04-27 20:09:47,042 - INFO - Optimization history plot saved to gp_optimization_results_20250427_200036/optimization_history.png
+2025-04-27 20:09:47,338 - INFO - Parameter importance plot saved to gp_optimization_results_20250427_200036/parameter_importance.png
+2025-04-27 20:09:47,892 - INFO - Best trial details plot saved to gp_optimization_results_20250427_200036/best_trial_details.png
+2025-04-27 20:09:49,351 - INFO - Parameter heatmap saved to gp_optimization_results_20250427_200036/parameter_heatmap.png
+2025-04-27 20:09:49,352 - INFO - All visualizations generated successfully

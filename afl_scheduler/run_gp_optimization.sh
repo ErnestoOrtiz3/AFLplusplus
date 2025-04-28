@@ -11,8 +11,9 @@ fi
 
 # Default parameters
 TRIALS=30
-DURATION=10
+DURATION=6
 INITIAL_SAMPLES=10
+REPLICATIONS=2
 VISUALIZE_ONLY=false
 RESULTS_DIR=""
 
@@ -31,6 +32,10 @@ while [[ $# -gt 0 ]]; do
       INITIAL_SAMPLES="$2"
       shift 2
       ;;
+    --replications)
+      REPLICATIONS="$2"
+      shift 2
+      ;;
     --visualize-only)
       VISUALIZE_ONLY=true
       shift
@@ -46,6 +51,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --trials N             Number of trials to run (default: $TRIALS)"
       echo "  --duration N           Duration of each benchmark in minutes (default: $DURATION)"
       echo "  --initial-samples N    Number of initial random samples (default: $INITIAL_SAMPLES)"
+      echo "  --replications N       Number of replications for each parameter combination (default: $REPLICATIONS)"
       echo "  --visualize-only       Only generate visualizations for existing results"
       echo "  --results-dir DIR      Specify a results directory to visualize (for --visualize-only)"
       echo "  -h, --help             Show this help message"
@@ -75,7 +81,8 @@ else
   python3 ./afl_scheduler/gp_optimizer.py \
     --trials "$TRIALS" \
     --duration "$DURATION" \
-    --initial-samples "$INITIAL_SAMPLES"
+    --initial-samples "$INITIAL_SAMPLES" \
+    --replications "$REPLICATIONS"
 fi
 
 echo "Optimization completed. Check the gp_optimization_results_* directory for results."

@@ -38,8 +38,9 @@ logger = logging.getLogger("gp_optimizer")
 
 # Constants
 DEFAULT_TRIALS = 30
-DEFAULT_DURATION = 10  # minutes per benchmark
+DEFAULT_DURATION = 6  # minutes per benchmark
 DEFAULT_INITIAL_SAMPLES = 10
+DEFAULT_REPLICATIONS = 2  # Number of replications for each parameter combination
 
 # Create results directory
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -82,11 +83,11 @@ PARAM_SPACE = {
 
 # Metric weights for composite score
 METRIC_WEIGHTS = {
-    'crashes_diff': 10.0,   # High weight for crashes
-    'paths_diff': 0.15,     # Medium-high weight for paths
-    'bitmap_diff': 3.43,    # Medium weight for coverage
-    'edges_diff': 0.14,     # Medium-low weight for edges
-    'execs_diff': 0.04      # Low weight for speed
+    'custom_crashes': 20.0,   # High weight for crashes
+    'custom_paths': 0.04,     # Medium-high weight for paths
+    'custom_bitmap': 1.0,    # Medium weight for coverage
+    'custom_edges': 0.01,     # Medium-low weight for edges
+    'custom_execs': 0.001      # Low weight for speed
 }
 
 def generate_random_parameters():
@@ -113,67 +114,105 @@ def generate_random_parameters():
 
     return params
 
-def run_benchmark(params, trial_num, duration):
-    """Run a benchmark with the given parameters and return the results."""
-    logger.info(f"Trial {trial_num}: Running benchmark with parameters: {params}")
+def run_benchmark(params, trial_num, duration, replications=DEFAULT_REPLICATIONS):
+    """Run a benchmark with the given parameters and return the results.
 
-    # Create a unique test name for this trial
-    test_name = f"gp_trial_{trial_num}"
+    Args:
+        params: Dictionary of parameter values
+        trial_num: Trial number
+        duration: Duration of each benchmark in minutes
+        replications: Number of replications to run for this parameter combination
 
-    # Construct the command to run the benchmark
-    cmd = [
-        "sudo",
-        "./afl_scheduler/param_test_enhanced_fixed.sh",
-        "custom",
-        test_name,
-        str(params['boost_duration']),
-        str(params['boost_weight']),
-        str(params['boost_decay']),
-        str(params['slice_us']),
-        str(params['slice_min_us'])
-    ]
+    Returns:
+        Dictionary with parameters, metrics, and score, or None if all replications failed
+    """
+    logger.info(f"Trial {trial_num}: Running benchmark with parameters: {params} ({replications} replications)")
 
-    # Log the command
-    logger.info(f"Running command: {' '.join(cmd)}")
+    all_metrics = []
+    all_scores = []
 
-    # Run the benchmark
-    try:
-        subprocess.run(cmd, check=True)
-        logger.info(f"Benchmark completed successfully")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Benchmark failed with error: {e}")
+    for rep in range(1, replications + 1):
+        # Create a unique test name for this trial and replication
+        test_name = f"gp_trial_{trial_num}_rep_{rep}"
+
+        logger.info(f"Starting replication {rep}/{replications}")
+
+        # Construct the command to run the benchmark
+        cmd = [
+            "sudo",
+            "./afl_scheduler/param_test_enhanced_fixed.sh",
+            "custom",
+            test_name,
+            str(params['boost_duration']),
+            str(params['boost_weight']),
+            str(params['boost_decay']),
+            str(params['slice_us']),
+            str(params['slice_min_us'])
+        ]
+
+        # Log the command
+        logger.info(f"Running command: {' '.join(cmd)}")
+
+        # Run the benchmark
+        try:
+            subprocess.run(cmd, check=True)
+            logger.info(f"Benchmark replication {rep} completed successfully")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Benchmark replication {rep} failed with error: {e}")
+            continue  # Try the next replication
+
+        # Find the results directory
+        results_dir = None
+        for d in sorted(Path(".").glob("enhanced_param_tests_*"), reverse=True):
+            if d.is_dir() and (d / test_name).exists():
+                results_dir = d / test_name
+                break
+
+        if not results_dir:
+            logger.error(f"Could not find results directory for trial {trial_num}, replication {rep}")
+            continue  # Try the next replication
+
+        # Parse the results
+        report_path = results_dir / "comparison_report.txt"
+        if not report_path.exists():
+            logger.error(f"Comparison report not found for trial {trial_num}, replication {rep}")
+            continue  # Try the next replication
+
+        # Parse the comparison report to extract metrics
+        metrics = parse_comparison_report(report_path)
+
+        # Calculate the composite score
+        score = calculate_score(metrics)
+
+        logger.info(f"Replication {rep} score: {score}")
+
+        # Store the metrics and score for this replication
+        all_metrics.append(metrics)
+        all_scores.append(score)
+
+    # If all replications failed, return None
+    if not all_scores:
+        logger.error(f"All replications failed for trial {trial_num}")
         return None
 
-    # Find the results directory
-    results_dir = None
-    for d in sorted(Path(".").glob("enhanced_param_tests_*"), reverse=True):
-        if d.is_dir() and (d / test_name).exists():
-            results_dir = d / test_name
-            break
+    # Average the metrics and scores
+    avg_metrics = {}
+    for key in all_metrics[0].keys():
+        avg_metrics[key] = sum(m[key] for m in all_metrics) / len(all_metrics)
 
-    if not results_dir:
-        logger.error(f"Could not find results directory for trial {trial_num}")
-        return None
+    avg_score = sum(all_scores) / len(all_scores)
 
-    # Parse the results
-    report_path = results_dir / "comparison_report.txt"
-    if not report_path.exists():
-        logger.error(f"Comparison report not found for trial {trial_num}")
-        return None
-
-    # Parse the comparison report to extract metrics
-    metrics = parse_comparison_report(report_path)
-
-    # Calculate the composite score
-    score = calculate_score(metrics)
+    logger.info(f"Trial {trial_num}: Average score across {len(all_scores)} replications: {avg_score}")
 
     # Save the results
-    save_trial_results(trial_num, params, metrics, score)
+    save_trial_results(trial_num, params, avg_metrics, avg_score, all_metrics, all_scores)
 
     return {
         'params': params,
-        'metrics': metrics,
-        'score': score
+        'metrics': avg_metrics,
+        'score': avg_score,
+        'all_metrics': all_metrics,
+        'all_scores': all_scores
     }
 
 def parse_comparison_report(report_path):
@@ -257,17 +296,22 @@ def calculate_score(metrics, weights=None):
     if weights is None:
         weights = METRIC_WEIGHTS
 
-    # Calculate base score from percentage differences
-    score = sum(metrics[metric] * weight for metric, weight in weights.items())
-
-    # Add a bonus for finding crashes when CFS finds none
-    if metrics['custom_crashes'] > 0 and metrics['cfs_crashes'] == 0:
-        score += 15.0
-
+    # Calculate score from raw custom metrics
+    score = sum(metrics[metric] * weight for metric, weight in weights.items() if metric in metrics)
+    
     return score
 
-def save_trial_results(trial_num, params, metrics, score):
-    """Save the results of a trial to disk."""
+def save_trial_results(trial_num, params, metrics, score, all_metrics=None, all_scores=None):
+    """Save the results of a trial to disk.
+
+    Args:
+        trial_num: Trial number
+        params: Parameter values
+        metrics: Average metrics across replications
+        score: Average score across replications
+        all_metrics: List of metrics for each replication (optional)
+        all_scores: List of scores for each replication (optional)
+    """
     # Convert any NumPy types to native Python types for JSON serialization
     serializable_params = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v
                           for k, v in params.items()}
@@ -284,21 +328,60 @@ def save_trial_results(trial_num, params, metrics, score):
         'timestamp': datetime.now().isoformat()
     }
 
+    # Add replication data if available
+    if all_metrics and all_scores:
+        # Convert any NumPy types in the replication data
+        serializable_all_metrics = []
+        for m in all_metrics:
+            serializable_all_metrics.append({
+                k: float(v) if isinstance(v, (np.float32, np.float64)) else v
+                for k, v in m.items()
+            })
+
+        serializable_all_scores = [float(s) for s in all_scores]
+
+        result['replications'] = {
+            'count': len(all_scores),
+            'all_metrics': serializable_all_metrics,
+            'all_scores': serializable_all_scores,
+            'score_std': float(np.std(all_scores)) if len(all_scores) > 1 else 0.0
+        }
+
     # Save as JSON
     with open(os.path.join(RESULTS_DIR, f"trial_{trial_num}.json"), 'w') as f:
         json.dump(result, f, indent=2)
 
     # Update the CSV file with all trials
-    update_trials_csv(trial_num, params, metrics, score)
+    update_trials_csv(trial_num, params, metrics, score, all_scores)
 
-def update_trials_csv(trial_num, params, metrics, score):
-    """Update the CSV file with all trials."""
+def update_trials_csv(trial_num, params, metrics, score, all_scores=None):
+    """Update the CSV file with all trials.
+
+    Args:
+        trial_num: Trial number
+        params: Parameter values
+        metrics: Average metrics across replications
+        score: Average score across replications
+        all_scores: List of scores for each replication (optional)
+    """
     # Create a row for this trial
     row = {
         'trial': trial_num,
         'score': score,
         'timestamp': datetime.now().isoformat()
     }
+
+    # Add replication statistics if available
+    if all_scores and len(all_scores) > 1:
+        row['score_std'] = np.std(all_scores)
+        row['score_min'] = min(all_scores)
+        row['score_max'] = max(all_scores)
+        row['replications'] = len(all_scores)
+    else:
+        row['score_std'] = 0.0
+        row['score_min'] = score
+        row['score_max'] = score
+        row['replications'] = 1 if all_scores else 1
 
     # Add parameters
     for param, value in params.items():
@@ -412,18 +495,40 @@ def propose_next_parameters(X_sample, y_sample, bounds):
     """
     from scipy.optimize import minimize
 
-    # Train the GP model
-    kernel = Matern(nu=2.5) + WhiteKernel(noise_level=0.1)
+    # Shift scores to ensure they're positive (helps with GP stability)
+    # Add a constant to all scores to make them positive
+    min_score = min(y_sample)
+    if min_score < 0:
+        score_shift = abs(min_score) + 500.0  # Add 500 to ensure all values are comfortably positive
+    else:
+        score_shift = 500.0  # Still add a constant for stability
+
+    shifted_y_sample = y_sample + score_shift
+
+    logger.info(f"Shifting scores by {score_shift} to ensure positive values for GP stability")
+
+    # Train the GP model with explicit noise handling
+    # Matern kernel with nu=2.5 (once-differentiable functions)
+    # Plus WhiteKernel to model observation noise
+    kernel = Matern(nu=2.5, length_scale_bounds=(1e-2, 1e2)) + WhiteKernel(noise_level=1e-2, noise_level_bounds=(1e-5, 1e1))
+
     model = GaussianProcessRegressor(
         kernel=kernel,
+        alpha=1e-2,  # Explicit noise regularization
         n_restarts_optimizer=10,
-        normalize_y=True,
+        normalize_y=True,  # Normalize target values
         random_state=42
     )
-    model.fit(X_sample, y_sample)
 
-    # Find the best observed value
-    y_best = y_sample.max()
+    # Fit the model on the shifted scores
+    model.fit(X_sample, shifted_y_sample)
+
+    # Log the learned kernel parameters
+    logger.info(f"Trained GP model with kernel: {model.kernel_}")
+    logger.info(f"Kernel hyperparameters: {model.kernel_.get_params()}")
+
+    # Find the best observed value (using shifted scores)
+    y_best = shifted_y_sample.max()
 
     # Define the negative expected improvement function (for minimization)
     def negative_ei(x):
@@ -433,8 +538,8 @@ def propose_next_parameters(X_sample, y_sample, bounds):
     best_ei = -np.inf
     best_x = None
 
-    # Try multiple random starting points
-    n_restarts = 10
+    # Try multiple random starting points for more reliable optimization
+    n_restarts = 15  # Increased from 10
     for _ in range(n_restarts):
         # Random starting point
         x0 = np.random.rand(len(bounds))
@@ -451,11 +556,21 @@ def propose_next_parameters(X_sample, y_sample, bounds):
             best_ei = -result.fun
             best_x = result.x
 
+    logger.info(f"Best expected improvement: {best_ei}")
+
     return best_x
 
-def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEFAULT_INITIAL_SAMPLES):
-    """Main function to run the optimization."""
+def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEFAULT_INITIAL_SAMPLES, replications=DEFAULT_REPLICATIONS):
+    """Main function to run the optimization.
+
+    Args:
+        n_trials: Total number of trials to run
+        duration: Duration of each benchmark in minutes
+        initial_samples: Number of initial random samples
+        replications: Number of replications for each parameter combination
+    """
     logger.info(f"Starting Gaussian Process optimization with {n_trials} trials, {duration} minutes per benchmark")
+    logger.info(f"Using {replications} replications for each parameter combination")
     logger.info(f"Results will be saved to {RESULTS_DIR}")
 
     # Save configuration
@@ -473,6 +588,7 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
         'n_trials': n_trials,
         'duration': duration,
         'initial_samples': initial_samples,
+        'replications': replications,
         'param_space': serializable_param_space,
         'metric_weights': METRIC_WEIGHTS,
         'start_time': datetime.now().isoformat()
@@ -863,6 +979,8 @@ if __name__ == "__main__":
                         help=f"Duration of each benchmark in minutes (default: {DEFAULT_DURATION})")
     parser.add_argument("--initial-samples", type=int, default=DEFAULT_INITIAL_SAMPLES,
                         help=f"Number of initial random samples (default: {DEFAULT_INITIAL_SAMPLES})")
+    parser.add_argument("--replications", type=int, default=DEFAULT_REPLICATIONS,
+                        help=f"Number of replications for each parameter combination (default: {DEFAULT_REPLICATIONS})")
     parser.add_argument("--visualize-only", action="store_true",
                         help="Only generate visualizations for the most recent results")
     parser.add_argument("--results-dir", type=str,
@@ -883,7 +1001,12 @@ if __name__ == "__main__":
                 logger.error("No results directories found")
     else:
         # Run the optimization
-        main(n_trials=args.trials, duration=args.duration, initial_samples=args.initial_samples)
+        main(
+            n_trials=args.trials,
+            duration=args.duration,
+            initial_samples=args.initial_samples,
+            replications=args.replications
+        )
 
         # Generate visualizations after optimization
         generate_visualizations()
