@@ -29,6 +29,9 @@ const volatile u64 prio_boost_duration_us = 1000000; // 1 second boost after fin
 const volatile u32 boost_weight = 1000;              // Weight to assign during boost period
 const volatile u64 boost_decay_period_us = 2000000;  // Period over which boost decays after expiration
 
+/* Define a shared DSQ ID for all AFL processes */
+#define AFL_SHARED_DSQ 1
+
 /* Scheduler state */
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
@@ -311,6 +314,10 @@ s32 BPF_STRUCT_OPS(afl_sched_init)
     
     bpf_map_update_elem(&min_vruntime, &key, &zero, BPF_ANY);
     
+    // Create a shared DSQ for all AFL processes
+    // Use node -1 to make it accessible from all CPUs
+    scx_bpf_create_dsq(AFL_SHARED_DSQ, -1);
+    
     return 0;
 }
 
@@ -351,6 +358,9 @@ s32 BPF_STRUCT_OPS(afl_sched_tick, struct task_struct *p)
     // Update vruntime based on how long it ran and its weight
     // Higher weight = slower vruntime accumulation = more CPU time
     task_context->vruntime += delta * 100 / weight;
+    
+    // Also update the task's scx.dsq_vtime field to ensure consistency
+    p->scx.dsq_vtime = task_context->vruntime;
     
     // Increment consecutive runs counter for fairness
     task_context->consecutive_runs++;
@@ -445,6 +455,9 @@ s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
             // Track boost time
             u64 boost_duration = *boost_until - now;
             bpf_map_update_elem(&afl_total_boost_time, &pid, &boost_duration, BPF_ANY);
+            
+            // For boosted tasks, artificially lower their vruntime to give higher priority
+            task_context->vruntime -= 1000000;  // Subtract a fixed amount to boost priority
         } else if (boost_until && (*boost_until + boost_decay_period_us > now)) {
             // Task is in decay period - gradual reduction of boost
             u64 decay_progress = (now - *boost_until) * 100 / boost_decay_period_us;
@@ -455,6 +468,9 @@ s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
             // Track boost time (including decay period)
             u64 boost_duration = boost_decay_period_us - (now - *boost_until);
             bpf_map_update_elem(&afl_total_boost_time, &pid, &boost_duration, BPF_ANY);
+            
+            // For tasks in decay period, adjust vruntime proportionally
+            task_context->vruntime -= (1000000 * (100 - decay_progress) / 100);
         } else {
             // Normal slice based on weight
             u32 *weight_ptr = bpf_map_lookup_elem(&afl_weights, &pid);
@@ -485,8 +501,8 @@ s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
         update_min_vruntime(task_context->vruntime);
     }
     
-    // Insert task into dispatch queue
-    scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, slice, 0);
+    // Insert task into shared dispatch queue with vruntime-based ordering
+    scx_bpf_dsq_insert_vtime(p, AFL_SHARED_DSQ, slice, task_context->vruntime, enq_flags);
     
     // Update statistics
     update_stats(1, 1, is_boosted ? 1 : 0);
@@ -496,8 +512,12 @@ s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
 
 s32 BPF_STRUCT_OPS(afl_sched_dispatch, s32 cpu, struct task_struct *prev)
 {
-    // We don't need to do anything here since we're using SCX_DSQ_LOCAL
-    // The SCX framework will handle dispatching tasks from the local queue
+    // Move tasks from the shared queue to the local queue
+    if (scx_bpf_dsq_move_to_local(AFL_SHARED_DSQ)) {
+        return 0;  // Successfully moved tasks
+    }
+    
+    // If no tasks were moved, let the kernel know
     return -ENOENT;
 }
 
