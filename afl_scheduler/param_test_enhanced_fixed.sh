@@ -16,6 +16,61 @@ SCHEDULER_ORDER="custom_first"
 BASE_RESULTS_DIR="enhanced_param_tests_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BASE_RESULTS_DIR"
 
+# Function to assign power schedule based on instance number and total count
+assign_power_schedule() {
+    local instance_num=$1
+    local total_instances=$2
+    
+    # First instance is always the main node with EXPLORE
+    if [ "$instance_num" -eq 1 ]; then
+        echo "-p explore"
+        return
+    fi
+    
+    # For the remaining instances, distribute schedules based on percentages
+    # Calculate which group this instance falls into
+    local exploit_count=$(( total_instances * 30 / 100 ))
+    local explore_count=$(( total_instances * 30 / 100 ))
+    local fast_count=$(( total_instances * 20 / 100 ))
+    local rare_count=$(( total_instances * 10 / 100 ))
+    local cmplog_count=$(( total_instances * 10 / 100 ))
+    
+    # Ensure at least one instance of each type if we have enough instances
+    if [ "$exploit_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then exploit_count=1; fi
+    if [ "$explore_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then explore_count=1; fi
+    if [ "$fast_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then fast_count=1; fi
+    if [ "$rare_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then rare_count=1; fi
+    if [ "$cmplog_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then cmplog_count=1; fi
+    
+    # Calculate the upper bounds for each group
+    local exploit_upper=$(( 1 + exploit_count ))
+    local explore_upper=$(( exploit_upper + explore_count ))
+    local fast_upper=$(( explore_upper + fast_count ))
+    local rare_upper=$(( fast_upper + rare_count ))
+    local cmplog_upper=$(( rare_upper + cmplog_count ))
+    
+    # Assign schedule based on which group the instance falls into
+    if [ "$instance_num" -lt "$exploit_upper" ]; then
+        echo "-p exploit"
+    elif [ "$instance_num" -lt "$explore_upper" ]; then
+        echo "-p explore"
+    elif [ "$instance_num" -lt "$fast_upper" ]; then
+        echo "-p fast"
+    elif [ "$instance_num" -lt "$rare_upper" ]; then
+        echo "-p rare"
+    elif [ "$instance_num" -lt "$cmplog_upper" ] && [ "$total_instances" -ge 5 ]; then
+        echo "-l 2AT"  # CMPLOG with transformations
+    else
+        # For any remaining instances, cycle through the schedules
+        case $(( (instance_num - cmplog_upper) % 4 )) in
+            0) echo "-p exploit" ;;
+            1) echo "-p explore" ;;
+            2) echo "-p fast" ;;
+            3) echo "-p rare" ;;
+        esac
+    fi
+}
+
 # Function to run a benchmark with specific parameters
 run_benchmark() {
     local test_name="$1"

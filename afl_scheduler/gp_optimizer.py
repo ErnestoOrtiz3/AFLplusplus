@@ -251,31 +251,31 @@ def parse_comparison_report(report_path):
         custom_execs_match = re.search(r'Total executions/sec: Custom=([\d.]+)', content)
         metrics['custom_execs'] = float(custom_execs_match.group(1)) if custom_execs_match else 0.0
 
-        cfs_execs_match = re.search(r'Total executions/sec:.*?CFS=([\d.]+)', content)
+        cfs_execs_match = re.search(r'Total executions/sec:.*?EEVDF=([\d.]+)', content)
         metrics['cfs_execs'] = float(cfs_execs_match.group(1)) if cfs_execs_match else 0.0
 
         custom_paths_match = re.search(r'Total paths found: Custom=(\d+)', content)
         metrics['custom_paths'] = int(custom_paths_match.group(1)) if custom_paths_match else 0
 
-        cfs_paths_match = re.search(r'Total paths found:.*?CFS=(\d+)', content)
+        cfs_paths_match = re.search(r'Total paths found:.*?EEVDF=(\d+)', content)
         metrics['cfs_paths'] = int(cfs_paths_match.group(1)) if cfs_paths_match else 0
 
         custom_crashes_match = re.search(r'Total crashes found: Custom=(\d+)', content)
         metrics['custom_crashes'] = int(custom_crashes_match.group(1)) if custom_crashes_match else 0
 
-        cfs_crashes_match = re.search(r'Total crashes found:.*?CFS=(\d+)', content)
+        cfs_crashes_match = re.search(r'Total crashes found:.*?EEVDF=(\d+)', content)
         metrics['cfs_crashes'] = int(cfs_crashes_match.group(1)) if cfs_crashes_match else 0
 
         custom_edges_match = re.search(r'Total edges found: Custom=(\d+)', content)
         metrics['custom_edges'] = int(custom_edges_match.group(1)) if custom_edges_match else 0
 
-        cfs_edges_match = re.search(r'Total edges found:.*?CFS=(\d+)', content)
+        cfs_edges_match = re.search(r'Total edges found:.*?EEVDF=(\d+)', content)
         metrics['cfs_edges'] = int(cfs_edges_match.group(1)) if cfs_edges_match else 0
 
         custom_bitmap_match = re.search(r'Average bitmap coverage: Custom=([\d.]+)%', content)
         metrics['custom_bitmap'] = float(custom_bitmap_match.group(1)) if custom_bitmap_match else 0.0
 
-        cfs_bitmap_match = re.search(r'Average bitmap coverage:.*?CFS=([\d.]+)%', content)
+        cfs_bitmap_match = re.search(r'Average bitmap coverage:.*?EEVDF=([\d.]+)%', content)
         metrics['cfs_bitmap'] = float(cfs_bitmap_match.group(1)) if cfs_bitmap_match else 0.0
 
         return metrics

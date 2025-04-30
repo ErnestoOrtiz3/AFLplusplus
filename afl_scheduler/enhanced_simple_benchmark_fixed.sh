@@ -80,7 +80,7 @@ while [[ $# -gt 0 ]]; do
       echo "  -a, --args ARGS              Target program arguments (default: $TARGET_ARGS)"
       echo "  -m, --memory-limit LIMIT     Memory limit for AFL++ (default: $MEMORY_LIMIT)"
       echo "  -o, --timeout TIMEOUT        Timeout for AFL++ (default: $TIMEOUT)"
-      echo "  -s, --scheduler-order ORDER  Scheduler order: custom_first or cfs_first (default: $SCHEDULER_ORDER)"
+      echo "  -s, --scheduler-order ORDER  Scheduler order: custom_first or EEVDF_first (default: $SCHEDULER_ORDER)"
       echo ""
       echo "Scheduler parameters:"
       echo "  --boost-duration DURATION    Boost duration in microseconds (default: $BOOST_DURATION)"
@@ -88,6 +88,16 @@ while [[ $# -gt 0 ]]; do
       echo "  --boost-decay DURATION       Boost decay period in microseconds (default: $BOOST_DECAY)"
       echo "  --slice MICROSECONDS         Time slice in microseconds (default: $SLICE_US)"
       echo "  --min-slice MICROSECONDS     Minimum time slice in microseconds (default: $SLICE_MIN_US)"
+      echo ""
+      echo "Power scheduling:"
+      echo "  The script automatically distributes power schedules based on the number of instances:"
+      echo "  - First instance: Always uses EXPLORE (-p explore) as the main node"
+      echo "  - Remaining instances: Distributed as follows:"
+      echo "    * ~30% EXPLOIT (-p exploit): Focuses on exploiting promising paths"
+      echo "    * ~30% EXPLORE (-p explore): Balanced exploration and exploitation"
+      echo "    * ~20% FAST (-p fast): Quick iteration through test cases"
+      echo "    * ~10% RARE (-p rare): Focuses on rare edges in the coverage map"
+      echo "    * ~10% CMPLOG (-l 2AT): Uses CMPLOG with transformations (if ≥5 instances)"
       echo ""
       echo "  -h, --help                   Show this help message"
       exit 0
@@ -108,7 +118,7 @@ STATS_DIR="$RESULTS_DIR/stats"
 # Create results directory
 mkdir -p "$RESULTS_DIR"
 mkdir -p "$STATS_DIR/custom"
-mkdir -p "$STATS_DIR/cfs"
+mkdir -p "$STATS_DIR/EEVDF"
 
 # Save test parameters
 echo "Test ID: $TEST_ID" > "$RESULTS_DIR/parameters.txt"
@@ -124,6 +134,69 @@ echo "Boost weight: $BOOST_WEIGHT" >> "$RESULTS_DIR/parameters.txt"
 echo "Boost decay period: $BOOST_DECAY us" >> "$RESULTS_DIR/parameters.txt"
 echo "Time slice: $SLICE_US us" >> "$RESULTS_DIR/parameters.txt"
 echo "Minimum time slice: $SLICE_MIN_US us" >> "$RESULTS_DIR/parameters.txt"
+echo "" >> "$RESULTS_DIR/parameters.txt"
+echo "Power schedule distribution:" >> "$RESULTS_DIR/parameters.txt"
+
+# Document the power schedule distribution
+for i in $(seq 1 "$NUM_INSTANCES"); do
+    POWER_SCHEDULE=$(assign_power_schedule "$i" "$NUM_INSTANCES")
+    echo "  Instance $i: $POWER_SCHEDULE" >> "$RESULTS_DIR/parameters.txt"
+done
+
+# Function to assign power schedule based on instance number and total count
+assign_power_schedule() {
+    local instance_num=$1
+    local total_instances=$2
+    
+    # First instance is always the main node with EXPLORE
+    if [ "$instance_num" -eq 1 ]; then
+        echo "-p explore"
+        return
+    fi
+    
+    # For the remaining instances, distribute schedules based on percentages
+    # Calculate which group this instance falls into
+    local exploit_count=$(( total_instances * 30 / 100 ))
+    local explore_count=$(( total_instances * 30 / 100 ))
+    local fast_count=$(( total_instances * 20 / 100 ))
+    local rare_count=$(( total_instances * 10 / 100 ))
+    local cmplog_count=$(( total_instances * 10 / 100 ))
+    
+    # Ensure at least one instance of each type if we have enough instances
+    if [ "$exploit_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then exploit_count=1; fi
+    if [ "$explore_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then explore_count=1; fi
+    if [ "$fast_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then fast_count=1; fi
+    if [ "$rare_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then rare_count=1; fi
+    if [ "$cmplog_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then cmplog_count=1; fi
+    
+    # Calculate the upper bounds for each group
+    local exploit_upper=$(( 1 + exploit_count ))
+    local explore_upper=$(( exploit_upper + explore_count ))
+    local fast_upper=$(( explore_upper + fast_count ))
+    local rare_upper=$(( fast_upper + rare_count ))
+    local cmplog_upper=$(( rare_upper + cmplog_count ))
+    
+    # Assign schedule based on which group the instance falls into
+    if [ "$instance_num" -lt "$exploit_upper" ]; then
+        echo "-p exploit"
+    elif [ "$instance_num" -lt "$explore_upper" ]; then
+        echo "-p explore"
+    elif [ "$instance_num" -lt "$fast_upper" ]; then
+        echo "-p fast"
+    elif [ "$instance_num" -lt "$rare_upper" ]; then
+        echo "-p rare"
+    elif [ "$instance_num" -lt "$cmplog_upper" ] && [ "$total_instances" -ge 5 ]; then
+        echo "-l 2AT"  # CMPLOG with transformations
+    else
+        # For any remaining instances, cycle through the schedules
+        case $(( (instance_num - cmplog_upper) % 4 )) in
+            0) echo "-p exploit" ;;
+            1) echo "-p explore" ;;
+            2) echo "-p fast" ;;
+            3) echo "-p rare" ;;
+        esac
+    fi
+}
 
 # Function to run the benchmark with a specific scheduler
 run_benchmark() {
@@ -181,7 +254,7 @@ run_benchmark() {
     /home/ernesto/Documents/AFLplusplus/afl_scheduler/stats_collector "$STATS_DIR/$scheduler" &
     STATS_PID=$!
     
-    # Start AFL++ instances
+    # Start AFL++ instances with appropriate power schedules
     for i in $(seq 1 "$NUM_INSTANCES"); do
         if [ "$i" -eq 1 ]; then
             # First instance is the main node
@@ -191,9 +264,12 @@ run_benchmark() {
             AFL_MODE="-S"
         fi
         
+        # Assign power schedule based on instance number and total count
+        POWER_SCHEDULE=$(assign_power_schedule "$i" "$NUM_INSTANCES")
+        
         # Start AFL++ instance
         sudo AFL_NO_AFFINITY=1 /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/original_seeds -o "$output_dir" \
-            $AFL_MODE "fuzzer$i" -t "$TIMEOUT" -m "$MEMORY_LIMIT" \
+            $AFL_MODE "fuzzer$i" -t "$TIMEOUT" -m "$MEMORY_LIMIT" $POWER_SCHEDULE \
             -- "$TARGET_PROGRAM" "$TARGET_ARGS" &
         
         # Wait a bit to avoid startup race conditions
@@ -227,15 +303,15 @@ run_benchmark() {
 # Run benchmarks based on scheduler order
 if [ "$SCHEDULER_ORDER" = "custom_first" ]; then
     run_benchmark "custom"
-    run_benchmark "cfs"
+    run_benchmark "EEVDF"
 else
-    run_benchmark "cfs"
+    run_benchmark "EEVDF"
     run_benchmark "custom"
 fi
 
 # Generate comparison report
 echo "Generating comparison report..."
-python3 /home/ernesto/Documents/AFLplusplus/afl_scheduler/compare_results.py "$RESULTS_DIR/custom" "$RESULTS_DIR/cfs" "$STATS_DIR" > "$RESULTS_DIR/comparison_report.txt"
+python3 /home/ernesto/Documents/AFLplusplus/afl_scheduler/compare_results.py "$RESULTS_DIR/custom" "$RESULTS_DIR/EEVDF" "$STATS_DIR" > "$RESULTS_DIR/comparison_report.txt"
 
 echo "Benchmark completed. Results in $RESULTS_DIR/"
 echo "Comparison report: $RESULTS_DIR/comparison_report.txt"

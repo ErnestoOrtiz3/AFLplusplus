@@ -49,14 +49,14 @@ def parse_boost_stats(stats_dir):
     
     return boost_data
 
-def generate_report(custom_dir, cfs_dir, stats_dir):
+def generate_report(custom_dir, EEVDF_dir, stats_dir):
     # Parse fuzzer stats
     custom_stats = parse_fuzzer_stats(custom_dir)
-    cfs_stats = parse_fuzzer_stats(cfs_dir)
+    EEVDF_stats = parse_fuzzer_stats(EEVDF_dir)
     
     
     # Check if we have any stats to report
-    if not custom_stats and not cfs_stats:
+    if not custom_stats and not EEVDF_stats:
         return "No fuzzer stats found in either directory."
 
     # Generate report
@@ -68,114 +68,114 @@ def generate_report(custom_dir, cfs_dir, stats_dir):
     
     # Calculate totals with safe defaults
     custom_total_execs = sum(float(stats.get('execs_per_sec', 0)) for stats in custom_stats.values())
-    cfs_total_execs = sum(float(stats.get('execs_per_sec', 0)) for stats in cfs_stats.values())
+    EEVDF_total_execs = sum(float(stats.get('execs_per_sec', 0)) for stats in EEVDF_stats.values())
     
     # Use corpus_count instead of paths_total
     custom_total_paths = sum(int(stats.get('corpus_count', 0)) for stats in custom_stats.values())
-    cfs_total_paths = sum(int(stats.get('corpus_count', 0)) for stats in cfs_stats.values())
+    EEVDF_total_paths = sum(int(stats.get('corpus_count', 0)) for stats in EEVDF_stats.values())
     
     # Use saved_crashes instead of unique_crashes
     custom_total_crashes = sum(int(stats.get('saved_crashes', 0)) for stats in custom_stats.values())
-    cfs_total_crashes = sum(int(stats.get('saved_crashes', 0)) for stats in cfs_stats.values())
+    EEVDF_total_crashes = sum(int(stats.get('saved_crashes', 0)) for stats in EEVDF_stats.values())
     
     # Safe division to avoid division by zero
-    execs_diff = ((custom_total_execs / max(cfs_total_execs, 1)) - 1) * 100 if cfs_total_execs > 0 else 0
-    paths_diff = ((custom_total_paths / max(cfs_total_paths, 1)) - 1) * 100 if cfs_total_paths > 0 else 0
-    crashes_diff = ((custom_total_crashes / max(cfs_total_crashes, 1)) - 1) * 100 if cfs_total_crashes > 0 else 0
+    execs_diff = ((custom_total_execs / max(EEVDF_total_execs, 1)) - 1) * 100 if EEVDF_total_execs > 0 else 0
+    paths_diff = ((custom_total_paths / max(EEVDF_total_paths, 1)) - 1) * 100 if EEVDF_total_paths > 0 else 0
+    crashes_diff = ((custom_total_crashes / max(EEVDF_total_crashes, 1)) - 1) * 100 if EEVDF_total_crashes > 0 else 0
     
-    report.append(f"Total executions/sec: Custom={custom_total_execs:.2f}, CFS={cfs_total_execs:.2f}, Diff={execs_diff:.2f}%")
-    report.append(f"Total paths found: Custom={custom_total_paths}, CFS={cfs_total_paths}, Diff={paths_diff:.2f}%")
-    report.append(f"Total crashes found: Custom={custom_total_crashes}, CFS={cfs_total_crashes}, Diff={crashes_diff:.2f}%")
+    report.append(f"Total executions/sec: Custom={custom_total_execs:.2f}, EEVDF={EEVDF_total_execs:.2f}, Diff={execs_diff:.2f}%")
+    report.append(f"Total paths found: Custom={custom_total_paths}, EEVDF={EEVDF_total_paths}, Diff={paths_diff:.2f}%")
+    report.append(f"Total crashes found: Custom={custom_total_crashes}, EEVDF={EEVDF_total_crashes}, Diff={crashes_diff:.2f}%")
     
     # Add additional metrics if available (percentage differences)
     try:
         custom_total_execs_done = sum(int(stats.get('execs_done', 0)) for stats in custom_stats.values())
-        cfs_total_execs_done = sum(int(stats.get('execs_done', 0)) for stats in cfs_stats.values())
-        execs_done_diff = ((custom_total_execs_done / max(cfs_total_execs_done, 1)) - 1) * 100 if cfs_total_execs_done > 0 else 0
-        report.append(f"Total executions done: Custom={custom_total_execs_done}, CFS={cfs_total_execs_done}, Diff={execs_done_diff:.2f}%")
+        EEVDF_total_execs_done = sum(int(stats.get('execs_done', 0)) for stats in EEVDF_stats.values())
+        execs_done_diff = ((custom_total_execs_done / max(EEVDF_total_execs_done, 1)) - 1) * 100 if EEVDF_total_execs_done > 0 else 0
+        report.append(f"Total executions done: Custom={custom_total_execs_done}, EEVDF={EEVDF_total_execs_done}, Diff={execs_done_diff:.2f}%")
     except (ValueError, TypeError):
         pass
     
     try:
         custom_total_edges = sum(int(stats.get('edges_found', 0)) for stats in custom_stats.values())
-        cfs_total_edges = sum(int(stats.get('edges_found', 0)) for stats in cfs_stats.values())
-        edges_diff = ((custom_total_edges / max(cfs_total_edges, 1)) - 1) * 100 if cfs_total_edges > 0 else 0
-        report.append(f"Total edges found: Custom={custom_total_edges}, CFS={cfs_total_edges}, Diff={edges_diff:.2f}%")
+        EEVDF_total_edges = sum(int(stats.get('edges_found', 0)) for stats in EEVDF_stats.values())
+        edges_diff = ((custom_total_edges / max(EEVDF_total_edges, 1)) - 1) * 100 if EEVDF_total_edges > 0 else 0
+        report.append(f"Total edges found: Custom={custom_total_edges}, EEVDF={EEVDF_total_edges}, Diff={edges_diff:.2f}%")
     except (ValueError, TypeError):
         pass
     
     try:
         # Calculate average bitmap coverage
         custom_bitmap_values = [float(stats.get('bitmap_cvg', '0%').replace('%', '')) for stats in custom_stats.values() if 'bitmap_cvg' in stats]
-        cfs_bitmap_values = [float(stats.get('bitmap_cvg', '0%').replace('%', '')) for stats in cfs_stats.values() if 'bitmap_cvg' in stats]
+        EEVDF_bitmap_values = [float(stats.get('bitmap_cvg', '0%').replace('%', '')) for stats in EEVDF_stats.values() if 'bitmap_cvg' in stats]
         
         custom_total_bitmap_cvg = sum(custom_bitmap_values) / max(len(custom_bitmap_values), 1)
-        cfs_total_bitmap_cvg = sum(cfs_bitmap_values) / max(len(cfs_bitmap_values), 1)
+        EEVDF_total_bitmap_cvg = sum(EEVDF_bitmap_values) / max(len(EEVDF_bitmap_values), 1)
         
-        bitmap_cvg_diff = custom_total_bitmap_cvg - cfs_total_bitmap_cvg
-        report.append(f"Average bitmap coverage: Custom={custom_total_bitmap_cvg:.2f}%, CFS={cfs_total_bitmap_cvg:.2f}%, Diff={bitmap_cvg_diff:.2f}pp")
+        bitmap_cvg_diff = custom_total_bitmap_cvg - EEVDF_total_bitmap_cvg
+        report.append(f"Average bitmap coverage: Custom={custom_total_bitmap_cvg:.2f}%, EEVDF={EEVDF_total_bitmap_cvg:.2f}%, Diff={bitmap_cvg_diff:.2f}pp")
     except (ValueError, TypeError):
         pass
     
     # Instance comparison
     report.append("\n== Instance Performance ==")
     
-    all_instances = sorted(set(list(custom_stats.keys()) + list(cfs_stats.keys())))
+    all_instances = sorted(set(list(custom_stats.keys()) + list(EEVDF_stats.keys())))
     
     for instance in all_instances:
         report.append(f"\n=== {instance} ===")
         
-        if instance in custom_stats and instance in cfs_stats:
+        if instance in custom_stats and instance in EEVDF_stats:
             # Basic metrics
             custom_execs = float(custom_stats[instance].get('execs_per_sec', 0))
-            cfs_execs = float(cfs_stats[instance].get('execs_per_sec', 0))
+            EEVDF_execs = float(EEVDF_stats[instance].get('execs_per_sec', 0))
             
             # Use corpus_count instead of paths_total
             custom_paths = int(custom_stats[instance].get('corpus_count', 0))
-            cfs_paths = int(cfs_stats[instance].get('corpus_count', 0))
+            EEVDF_paths = int(EEVDF_stats[instance].get('corpus_count', 0))
             
             # Use saved_crashes instead of unique_crashes
             custom_crashes = int(custom_stats[instance].get('saved_crashes', 0))
-            cfs_crashes = int(cfs_stats[instance].get('saved_crashes', 0))
+            EEVDF_crashes = int(EEVDF_stats[instance].get('saved_crashes', 0))
             
             # Safe division to avoid division by zero
-            execs_diff = ((custom_execs / max(cfs_execs, 1)) - 1) * 100 if cfs_execs > 0 else 0
-            paths_diff = ((custom_paths / max(cfs_paths, 1)) - 1) * 100 if cfs_paths > 0 else 0
-            crashes_diff = ((custom_crashes / max(cfs_crashes, 1)) - 1) * 100 if cfs_crashes > 0 else 0
+            execs_diff = ((custom_execs / max(EEVDF_execs, 1)) - 1) * 100 if EEVDF_execs > 0 else 0
+            paths_diff = ((custom_paths / max(EEVDF_paths, 1)) - 1) * 100 if EEVDF_paths > 0 else 0
+            crashes_diff = ((custom_crashes / max(EEVDF_crashes, 1)) - 1) * 100 if EEVDF_crashes > 0 else 0
             
-            report.append(f"Executions/sec: Custom={custom_execs:.2f}, CFS={cfs_execs:.2f}, Diff={execs_diff:.2f}%")
-            report.append(f"Paths found: Custom={custom_paths}, CFS={cfs_paths}, Diff={paths_diff:.2f}%")
-            report.append(f"Crashes found: Custom={custom_crashes}, CFS={cfs_crashes}, Diff={crashes_diff:.2f}%")
+            report.append(f"Executions/sec: Custom={custom_execs:.2f}, EEVDF={EEVDF_execs:.2f}, Diff={execs_diff:.2f}%")
+            report.append(f"Paths found: Custom={custom_paths}, EEVDF={EEVDF_paths}, Diff={paths_diff:.2f}%")
+            report.append(f"Crashes found: Custom={custom_crashes}, EEVDF={EEVDF_crashes}, Diff={crashes_diff:.2f}%")
             
             # Additional metrics if available
-            if 'cycles_done' in custom_stats[instance] and 'cycles_done' in cfs_stats[instance]:
+            if 'cycles_done' in custom_stats[instance] and 'cycles_done' in EEVDF_stats[instance]:
                 custom_cycles = float(custom_stats[instance].get('cycles_done', 0))
-                cfs_cycles = float(cfs_stats[instance].get('cycles_done', 0))
-                cycles_diff = ((custom_cycles / max(cfs_cycles, 1)) - 1) * 100 if cfs_cycles > 0 else 0
-                report.append(f"Queue cycles: Custom={custom_cycles:.2f}, CFS={cfs_cycles:.2f}, Diff={cycles_diff:.2f}%")
-            if 'execs_done' in custom_stats[instance] and 'execs_done' in cfs_stats[instance]:
+                EEVDF_cycles = float(EEVDF_stats[instance].get('cycles_done', 0))
+                cycles_diff = ((custom_cycles / max(EEVDF_cycles, 1)) - 1) * 100 if EEVDF_cycles > 0 else 0
+                report.append(f"Queue cycles: Custom={custom_cycles:.2f}, EEVDF={EEVDF_cycles:.2f}, Diff={cycles_diff:.2f}%")
+            if 'execs_done' in custom_stats[instance] and 'execs_done' in EEVDF_stats[instance]:
                 custom_execs_done = int(custom_stats[instance].get('execs_done', 0))
-                cfs_execs_done = int(cfs_stats[instance].get('execs_done', 0))
-                execs_done_diff = ((custom_execs_done / max(cfs_execs_done, 1)) - 1) * 100 if cfs_execs_done > 0 else 0
-                report.append(f"Total executions: Custom={custom_execs_done}, CFS={cfs_execs_done}, Diff={execs_done_diff:.2f}%")
+                EEVDF_execs_done = int(EEVDF_stats[instance].get('execs_done', 0))
+                execs_done_diff = ((custom_execs_done / max(EEVDF_execs_done, 1)) - 1) * 100 if EEVDF_execs_done > 0 else 0
+                report.append(f"Total executions: Custom={custom_execs_done}, EEVDF={EEVDF_execs_done}, Diff={execs_done_diff:.2f}%")
             
-            if 'edges_found' in custom_stats[instance] and 'edges_found' in cfs_stats[instance]:
+            if 'edges_found' in custom_stats[instance] and 'edges_found' in EEVDF_stats[instance]:
                 custom_edges = int(custom_stats[instance].get('edges_found', 0))
-                cfs_edges = int(cfs_stats[instance].get('edges_found', 0))
-                edges_diff = ((custom_edges / max(cfs_edges, 1)) - 1) * 100 if cfs_edges > 0 else 0
-                report.append(f"Edges found: Custom={custom_edges}, CFS={cfs_edges}, Diff={edges_diff:.2f}%")
+                EEVDF_edges = int(EEVDF_stats[instance].get('edges_found', 0))
+                edges_diff = ((custom_edges / max(EEVDF_edges, 1)) - 1) * 100 if EEVDF_edges > 0 else 0
+                report.append(f"Edges found: Custom={custom_edges}, EEVDF={EEVDF_edges}, Diff={edges_diff:.2f}%")
             
-            if 'bitmap_cvg' in custom_stats[instance] and 'bitmap_cvg' in cfs_stats[instance]:
+            if 'bitmap_cvg' in custom_stats[instance] and 'bitmap_cvg' in EEVDF_stats[instance]:
                 custom_bitmap_cvg = float(custom_stats[instance].get('bitmap_cvg', '0%').replace('%', ''))
-                cfs_bitmap_cvg = float(cfs_stats[instance].get('bitmap_cvg', '0%').replace('%', ''))
-                bitmap_cvg_diff = custom_bitmap_cvg - cfs_bitmap_cvg
-                report.append(f"Bitmap coverage: Custom={custom_bitmap_cvg:.2f}%, CFS={cfs_bitmap_cvg:.2f}%, Diff={bitmap_cvg_diff:.2f}pp")
+                EEVDF_bitmap_cvg = float(EEVDF_stats[instance].get('bitmap_cvg', '0%').replace('%', ''))
+                bitmap_cvg_diff = custom_bitmap_cvg - EEVDF_bitmap_cvg
+                report.append(f"Bitmap coverage: Custom={custom_bitmap_cvg:.2f}%, EEVDF={EEVDF_bitmap_cvg:.2f}%, Diff={bitmap_cvg_diff:.2f}pp")
             
-            if 'stability' in custom_stats[instance] and 'stability' in cfs_stats[instance]:
+            if 'stability' in custom_stats[instance] and 'stability' in EEVDF_stats[instance]:
                 custom_stability = float(custom_stats[instance].get('stability', '0%').replace('%', ''))
-                cfs_stability = float(cfs_stats[instance].get('stability', '0%').replace('%', ''))
-                stability_diff = custom_stability - cfs_stability
-                report.append(f"Stability: Custom={custom_stability:.2f}%, CFS={cfs_stability:.2f}%, Diff={stability_diff:.2f}pp")
+                EEVDF_stability = float(EEVDF_stats[instance].get('stability', '0%').replace('%', ''))
+                stability_diff = custom_stability - EEVDF_stability
+                report.append(f"Stability: Custom={custom_stability:.2f}%, EEVDF={EEVDF_stability:.2f}%, Diff={stability_diff:.2f}pp")
         else:
             report.append("Instance not present in both test runs")
     
@@ -185,36 +185,36 @@ def generate_report(custom_dir, cfs_dir, stats_dir):
             
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <custom_scheduler_dir> <cfs_scheduler_dir> <stats_dir>")
+        print(f"Usage: {sys.argv[0]} <custom_scheduler_dir> <EEVDF_scheduler_dir> <stats_dir>")
         sys.exit(1)
     
     custom_dir = sys.argv[1]
-    cfs_dir = sys.argv[2]
+    EEVDF_dir = sys.argv[2]
     stats_dir = sys.argv[3]
     
-    report = generate_report(custom_dir, cfs_dir, stats_dir)
+    report = generate_report(custom_dir, EEVDF_dir, stats_dir)
     print(report)
     
     # Generate plots if matplotlib is available
     try:
         # Create performance comparison chart
         custom_stats = parse_fuzzer_stats(custom_dir)
-        cfs_stats = parse_fuzzer_stats(cfs_dir)
+        EEVDF_stats = parse_fuzzer_stats(EEVDF_dir)
         
-        instances = sorted(set(list(custom_stats.keys()) + list(cfs_stats.keys())))
+        instances = sorted(set(list(custom_stats.keys()) + list(EEVDF_stats.keys())))
         custom_execs = [float(custom_stats.get(i, {}).get('execs_per_sec', 0)) for i in instances]
-        cfs_execs = [float(cfs_stats.get(i, {}).get('execs_per_sec', 0)) for i in instances]
+        EEVDF_execs = [float(EEVDF_stats.get(i, {}).get('execs_per_sec', 0)) for i in instances]
         
         plt.figure(figsize=(10, 6))
         x = range(len(instances))
         width = 0.35
         
         plt.bar([i - width/2 for i in x], custom_execs, width, label='Custom Scheduler')
-        plt.bar([i + width/2 for i in x], cfs_execs, width, label='CFS Scheduler')
+        plt.bar([i + width/2 for i in x], EEVDF_execs, width, label='EEVDF Scheduler')
         
         plt.xlabel('Instance')
         plt.ylabel('Executions per Second')
-        plt.title('Performance Comparison: Custom vs CFS Scheduler')
+        plt.title('Performance Comparison: Custom vs EEVDF Scheduler')
         plt.xticks(x, instances)
         plt.legend()
         
