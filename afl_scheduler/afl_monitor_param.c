@@ -29,7 +29,7 @@
 #define POLL_INTERVAL_MAX_MS 5000
 #define REBALANCE_INTERVAL_DEFAULT_SEC 300
 #define NEW_PATH_SCORE_DEFAULT 100.0
-#define NEW_CRASH_SCORE_DEFAULT 500.0
+#define NEW_CRASH_SCORE_DEFAULT 2000.0
 #define SCORE_DECAY_FACTOR_DEFAULT 0.99
 #define WEIGHT_SCALE_FACTOR_DEFAULT 10.0
 #define MIN_WEIGHT_PERCENT_DEFAULT 10
@@ -557,15 +557,19 @@ static void update_bpf_maps(void) {
         uint64_t last_path_us = last_path_time * 1000000;
         uint64_t last_crash_us = last_crash_time * 1000000;
         
-        // If a new path or crash was found recently, boost this fuzzer
-        if (now - last_path_us < boost_duration_us || 
-            now - last_crash_us < boost_duration_us) {
-            
-            // Set boost until timestamp
+        // If a new crash was found recently, apply extended boost
+        if (now - last_crash_us < boost_duration_us * 3) {
+            // Extended boost for crashes (3x normal duration)
+            uint64_t boost_until = now + boost_duration_us * 3;
+            bpf_map_update_elem(boost_map_fd, &pid, &boost_until, BPF_ANY);
+            printf("Boosting fuzzer PID %d for CRASH until %lu\n", pid, boost_until);
+        }
+        // Otherwise, if a new path was found recently, apply normal boost
+        else if (now - last_path_us < boost_duration_us) {
+            // Normal boost for paths
             uint64_t boost_until = now + boost_duration_us;
             bpf_map_update_elem(boost_map_fd, &pid, &boost_until, BPF_ANY);
-            
-            printf("Boosting fuzzer PID %d until %lu\n", pid, boost_until);
+            printf("Boosting fuzzer PID %d for path until %lu\n", pid, boost_until);
         }
     }
 }
