@@ -37,10 +37,10 @@ logging.basicConfig(
 logger = logging.getLogger("gp_optimizer")
 
 # Constants
-DEFAULT_TRIALS = 2
-DEFAULT_DURATION = 2  # minutes per benchmark
+DEFAULT_TRIALS = 1
+DEFAULT_DURATION = 1  # minutes per benchmark
 DEFAULT_INITIAL_SAMPLES = 1
-DEFAULT_REPLICATIONS = 2  # Number of replications for each parameter combination
+DEFAULT_REPLICATIONS = 1  # Number of replications for each parameter combination
 
 # Create results directory
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -83,13 +83,20 @@ PARAM_SPACE = {
 
 # Metric weights for composite score
 METRIC_WEIGHTS = {
-    'custom_crashes': 20.0,   # High weight for crashes
-    'custom_paths': 0.04,     # Medium-high weight for paths
-    'custom_bitmap': 1.0,    # Medium weight for coverage
-    'custom_edges': 0.01,     # Medium-low weight for edges
+    'custom_crashes': 00.0,   # High weight for crashes
+    'custom_paths': 0.8,     # Medium-high weight for paths
+    'custom_bitmap': 0.0,    # Medium weight for coverage
+    'custom_edges': 1.0,     # Medium-low weight for edges
     'custom_execs': 0.001      # Low weight for speed
 }
 
+METRIC_MEANS = {
+    'custom_crashes': 17.2,
+    'custom_paths': 2436.8,
+    'custom_bitmap': 62.3,
+    'custom_edges': 1487.7,
+    'custom_execs': 11970.4,
+}
 def generate_random_parameters():
     """Generate a random valid parameter combination."""
     params = {}
@@ -291,15 +298,21 @@ def parse_comparison_report(report_path):
             'custom_bitmap': 0.0, 'cfs_bitmap': 0.0
         }
 
-def calculate_score(metrics, weights=None):
-    """Calculate a composite score from the metrics."""
+def calculate_score(metrics, weights=None, means=None): 
+    """Calculate a normalized composite score from the metrics."""
     if weights is None:
         weights = METRIC_WEIGHTS
+    if means is None:
+        means = METRIC_MEANS
 
-    # Calculate score from raw custom metrics
-    score = sum(metrics[metric] * weight for metric, weight in weights.items() if metric in metrics)
+    score = 0.0
+    for metric in weights:
+        if metric in metrics and metric in means and means[metric] != 0:
+            normalized_value = metrics[metric] / means[metric]
+            score += normalized_value * weights[metric]
 
     return score
+
 
 def save_trial_results(trial_num, params, metrics, score, all_metrics=None, all_scores=None):
     """Save the results of a trial to disk.
