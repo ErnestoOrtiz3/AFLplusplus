@@ -267,9 +267,9 @@ run_benchmark() {
         fi
     fi
 
-    # Start stats collector
-    /home/ernesto/Documents/AFLplusplus/afl_scheduler/stats_collector "$STATS_DIR/$scheduler" &
-    STATS_PID=$!
+    # Start stats collector (To generate productivity stats per boost period)
+    # /home/ernesto/Documents/AFLplusplus/afl_scheduler/stats_collector "$STATS_DIR/$scheduler" &
+    # STATS_PID=$! # if you activate it, add this to the call to compare_results.py: "$STATS_DIR" before redirect >
 
     # Start AFL++ instances with appropriate power schedules
     for i in $(seq 1 "$NUM_INSTANCES"); do
@@ -305,7 +305,7 @@ run_benchmark() {
     sleep 5
 
     # Stop stats collector
-    kill $STATS_PID
+    # kill $STATS_PID
 
     # If using custom scheduler, stop it
     if [ "$scheduler" = "custom" ]; then
