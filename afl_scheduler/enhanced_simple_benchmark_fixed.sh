@@ -11,6 +11,7 @@ TARGET_ARGS="@@"
 MEMORY_LIMIT="none"
 TIMEOUT="7500+"
 SCHEDULER_ORDER="custom_first"
+CUSTOM_RESULTS_DIR=""   # Optional custom results directory
 
 # Default scheduler parameters
 BOOST_DURATION=1000000  # 1 second in microseconds
@@ -70,6 +71,10 @@ while [[ $# -gt 0 ]]; do
       SLICE_MIN_US="$2"
       shift 2
       ;;
+    --results-dir)
+      CUSTOM_RESULTS_DIR="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [options]"
       echo ""
@@ -88,6 +93,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --boost-decay DURATION       Boost decay period in microseconds (default: $BOOST_DECAY)"
       echo "  --slice MICROSECONDS         Time slice in microseconds (default: $SLICE_US)"
       echo "  --min-slice MICROSECONDS     Minimum time slice in microseconds (default: $SLICE_MIN_US)"
+      echo "  --results-dir DIR            Custom results directory (default: auto-generated)"
       echo ""
       echo "Power scheduling:"
       echo "  The script automatically distributes power schedules based on the number of instances:"
@@ -111,8 +117,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Create a unique test ID based on parameters and timestamp
-TEST_ID="enhanced_simple_$(date +%Y%m%d_%H%M%S)"
-RESULTS_DIR="enhanced_simple_benchmark_results/${TEST_ID}"
+if [ -z "$CUSTOM_RESULTS_DIR" ]; then
+    # No custom directory provided, create our own
+    TEST_ID="enhanced_simple_$(date +%Y%m%d_%H%M%S)"
+    RESULTS_DIR="enhanced_simple_benchmark_results/${TEST_ID}"
+else
+    # Use the provided custom directory
+    RESULTS_DIR="$CUSTOM_RESULTS_DIR"
+fi
+
 STATS_DIR="$RESULTS_DIR/stats"
 
 # Create results directory
@@ -121,7 +134,11 @@ mkdir -p "$STATS_DIR/custom"
 mkdir -p "$STATS_DIR/EEVDF"
 
 # Save test parameters
-echo "Test ID: $TEST_ID" > "$RESULTS_DIR/parameters.txt"
+if [ -z "$CUSTOM_RESULTS_DIR" ]; then
+    echo "Test ID: $TEST_ID" > "$RESULTS_DIR/parameters.txt"
+else
+    echo "Test ID: Custom directory" > "$RESULTS_DIR/parameters.txt"
+fi
 echo "Duration: $DURATION minutes" >> "$RESULTS_DIR/parameters.txt"
 echo "Number of instances: $NUM_INSTANCES" >> "$RESULTS_DIR/parameters.txt"
 echo "Target program: $TARGET_PROGRAM" >> "$RESULTS_DIR/parameters.txt"
@@ -147,13 +164,13 @@ done
 assign_power_schedule() {
     local instance_num=$1
     local total_instances=$2
-    
+
     # First instance is always the main node with EXPLORE
     if [ "$instance_num" -eq 1 ]; then
         echo "-p explore"
         return
     fi
-    
+
     # For the remaining instances, distribute schedules based on percentages
     # Calculate which group this instance falls into
     local exploit_count=$(( total_instances * 30 / 100 ))
@@ -161,21 +178,21 @@ assign_power_schedule() {
     local fast_count=$(( total_instances * 20 / 100 ))
     local rare_count=$(( total_instances * 10 / 100 ))
     local cmplog_count=$(( total_instances * 10 / 100 ))
-    
+
     # Ensure at least one instance of each type if we have enough instances
     if [ "$exploit_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then exploit_count=1; fi
     if [ "$explore_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then explore_count=1; fi
     if [ "$fast_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then fast_count=1; fi
     if [ "$rare_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then rare_count=1; fi
     if [ "$cmplog_count" -lt 1 ] && [ "$total_instances" -ge 5 ]; then cmplog_count=1; fi
-    
+
     # Calculate the upper bounds for each group
     local exploit_upper=$(( 1 + exploit_count ))
     local explore_upper=$(( exploit_upper + explore_count ))
     local fast_upper=$(( explore_upper + fast_count ))
     local rare_upper=$(( fast_upper + rare_count ))
     local cmplog_upper=$(( rare_upper + cmplog_count ))
-    
+
     # Assign schedule based on which group the instance falls into
     if [ "$instance_num" -lt "$exploit_upper" ]; then
         echo "-p exploit"
@@ -201,9 +218,9 @@ assign_power_schedule() {
 # Function to run the benchmark with a specific scheduler
 run_benchmark() {
     local scheduler="$1"
-    
+
     echo "=== Running benchmark with $scheduler scheduler ==="
-    
+
     if [ "$scheduler" = "custom" ]; then
         # Start the enhanced scheduler
         echo "Starting enhanced scheduler with:"
@@ -212,7 +229,7 @@ run_benchmark() {
         echo "  Boost decay period: $BOOST_DECAY us"
         echo "  Time slice: $SLICE_US us"
         echo "  Minimum time slice: $SLICE_MIN_US us"
-        
+
         # Load the enhanced scheduler
         sudo /home/ernesto/Documents/AFLplusplus/afl_scheduler/afl_sched_loader_enhanced_simple \
             -b "$BOOST_DURATION" \
@@ -220,21 +237,21 @@ run_benchmark() {
             -d "$BOOST_DECAY" \
             -s "$SLICE_US" \
             -m "$SLICE_MIN_US" &
-        
+
         # Wait for scheduler to initialize
         sleep 5
-        
+
         # Check if scheduler is running
         if ! ps aux | grep -q "[a]fl_sched_loader_enhanced_simple"; then
             echo "Error: Failed to start enhanced scheduler"
             return 1
         fi
     fi
-    
+
     # Create output directory
     local output_dir="$RESULTS_DIR/$scheduler"
     mkdir -p "$output_dir"
-    
+
     # Determine which scheduler to run first
     if [ "$SCHEDULER_ORDER" = "custom_first" ]; then
         if [ "$scheduler" = "custom" ]; then
@@ -249,11 +266,11 @@ run_benchmark() {
             FIRST_RUN="true"
         fi
     fi
-    
+
     # Start stats collector
     /home/ernesto/Documents/AFLplusplus/afl_scheduler/stats_collector "$STATS_DIR/$scheduler" &
     STATS_PID=$!
-    
+
     # Start AFL++ instances with appropriate power schedules
     for i in $(seq 1 "$NUM_INSTANCES"); do
         if [ "$i" -eq 1 ]; then
@@ -263,40 +280,40 @@ run_benchmark() {
             # Other instances are secondary nodes
             AFL_MODE="-S"
         fi
-        
+
         # Assign power schedule based on instance number and total count
         POWER_SCHEDULE=$(assign_power_schedule "$i" "$NUM_INSTANCES")
-        
+
         # Start AFL++ instance
         sudo AFL_NO_AFFINITY=1 /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/original_seeds -o "$output_dir" \
             $AFL_MODE "fuzzer$i" -t "$TIMEOUT" -m "$MEMORY_LIMIT" $POWER_SCHEDULE \
             -- "$TARGET_PROGRAM" "$TARGET_ARGS" &
-        
+
         # Wait a bit to avoid startup race conditions
         sleep 2
     done
-    
+
     # Wait for the specified duration
     echo "Running for $DURATION minutes..."
     sleep $((DURATION * 60))
-    
+
     # Stop AFL++ instances
     echo "Stopping AFL++ instances..."
     sudo killall afl-fuzz
-    
+
     # Wait for all instances to stop
     sleep 5
-    
+
     # Stop stats collector
     kill $STATS_PID
-    
+
     # If using custom scheduler, stop it
     if [ "$scheduler" = "custom" ]; then
         echo "Stopping enhanced scheduler..."
         sudo killall afl_sched_loader_enhanced_simple
         sleep 2
     fi
-    
+
     echo "Benchmark with $scheduler scheduler completed"
 }
 

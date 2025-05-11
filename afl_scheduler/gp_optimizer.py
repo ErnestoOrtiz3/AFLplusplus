@@ -168,12 +168,18 @@ def run_benchmark(params, trial_num, duration, replications=DEFAULT_REPLICATIONS
             logger.error(f"Benchmark replication {rep} failed with error: {e}")
             continue  # Try the next replication
 
-        # Find the results directory
+        # Find the results directory - first check in the most recent enhanced_param_tests_* directory
         results_dir = None
+
+        # First try to find in enhanced_param_tests_* directories (old method)
         for d in sorted(Path(".").glob("enhanced_param_tests_*"), reverse=True):
             if d.is_dir() and (d / test_name).exists():
                 results_dir = d / test_name
                 break
+
+        # If not found, try to find directly in the current directory (new method)
+        if not results_dir and Path(test_name).exists() and Path(test_name).is_dir():
+            results_dir = Path(test_name)
 
         if not results_dir:
             logger.error(f"Could not find results directory for trial {trial_num}, replication {rep}")
@@ -298,7 +304,7 @@ def parse_comparison_report(report_path):
             'custom_bitmap': 0.0, 'cfs_bitmap': 0.0
         }
 
-def calculate_score(metrics, weights=None, means=None): 
+def calculate_score(metrics, weights=None, means=None):
     """Calculate a normalized composite score from the metrics."""
     if weights is None:
         weights = METRIC_WEIGHTS
