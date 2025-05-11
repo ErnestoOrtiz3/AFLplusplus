@@ -106,23 +106,23 @@ metrics=("Total executions/sec" "Total paths found" "Total crashes found" "Total
 for metric in "${metrics[@]}"; do
     # Extract all values for this metric
     custom_values=$(grep "$metric: Custom=" "$RESULTS_DIR/run_"*/comparison_report.txt | sed -E "s/.*Custom=([0-9.]+).*/\1/")
-    cfs_values=$(grep "$metric: .*CFS=" "$RESULTS_DIR/run_"*/comparison_report.txt | sed -E "s/.*CFS=([0-9.]+).*/\1/")
+    EEVDF_values=$(grep "$metric: .*EEVDF=" "$RESULTS_DIR/run_"*/comparison_report.txt | sed -E "s/.*EEVDF=([0-9.]+).*/\1/")
     diff_values=$(grep "$metric: .*Diff=" "$RESULTS_DIR/run_"*/comparison_report.txt | sed -E "s/.*Diff=([0-9.+-]+)%.*/\1/")
 
     # Calculate averages
     custom_avg=$(echo "$custom_values" | awk '{ sum += $1; n++ } END { if (n > 0) print sum / n; else print "N/A" }')
-    cfs_avg=$(echo "$cfs_values" | awk '{ sum += $1; n++ } END { if (n > 0) print sum / n; else print "N/A" }')
+    EEVDF_avg=$(echo "$EEVDF_values" | awk '{ sum += $1; n++ } END { if (n > 0) print sum / n; else print "N/A" }')
     diff_avg=$(echo "$diff_values" | awk '{ sum += $1; n++ } END { if (n > 0) print sum / n; else print "N/A" }')
 
     # Calculate difference percentage from the averages directly
-    if [[ "$custom_avg" != "N/A" && "$cfs_avg" != "N/A" && "$cfs_avg" != "0" ]]; then
-        recalc_diff=$(echo "scale=4; ($custom_avg - $cfs_avg) * 100 / $cfs_avg" | bc)
+    if [[ "$custom_avg" != "N/A" && "$EEVDF_avg" != "N/A" && "$EEVDF_avg" != "0" ]]; then
+        recalc_diff=$(echo "scale=4; ($custom_avg - $EEVDF_avg) * 100 / $EEVDF_avg" | bc)
     else
         recalc_diff="N/A"
     fi
 
     # Add to summary
-    echo "$metric: Custom=$custom_avg, CFS=$cfs_avg, Diff=$diff_avg% (Recalculated Diff=$recalc_diff%)" >> "$RESULTS_DIR/summary.txt"
+    echo "$metric: Custom=$custom_avg, EEVDF=$EEVDF_avg, Diff=$diff_avg% (Recalculated Diff=$recalc_diff%)" >> "$RESULTS_DIR/summary.txt"
 done
 
 echo ""
