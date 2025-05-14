@@ -1,0 +1,1 @@
+Testing octal escapes: \0 \01 \012 \123 \377

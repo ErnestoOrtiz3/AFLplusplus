@@ -1,0 +1,1 @@
+Testing hex escapes: \x41 \x42 \x43 \x00 \xff

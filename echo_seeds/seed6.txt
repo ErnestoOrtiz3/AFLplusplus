@@ -1,0 +1,1 @@
+Testing the \c escape sequence which should terminate output

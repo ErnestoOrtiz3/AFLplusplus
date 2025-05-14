@@ -6,7 +6,7 @@
 # Default benchmark parameters
 DURATION=1
 NUM_INSTANCES=4
-TARGET_PROGRAM="./base64_afl"
+TARGET_PROGRAM="./fuzz_echo"
 TARGET_ARGS="@@"
 MEMORY_LIMIT="none"
 TIMEOUT="7500+"
@@ -285,7 +285,7 @@ run_benchmark() {
         POWER_SCHEDULE=$(assign_power_schedule "$i" "$NUM_INSTANCES")
 
         # Start AFL++ instance
-        sudo AFL_NO_AFFINITY=1 /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/seeds_base64 -o "$output_dir" \
+        sudo AFL_NO_AFFINITY=1 /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/better_seeds -o "$output_dir" \
             $AFL_MODE "fuzzer$i" -t "$TIMEOUT" -m "$MEMORY_LIMIT" $POWER_SCHEDULE \
             -- "$TARGET_PROGRAM" "$TARGET_ARGS" &
 
