@@ -1,0 +1,13 @@
+
+apple
+   banana
+orange
+	tabbed
+  spaces
+		double-tabbed
+
+more text
+   
+   
+trailing spaces   
+trailing tabs		

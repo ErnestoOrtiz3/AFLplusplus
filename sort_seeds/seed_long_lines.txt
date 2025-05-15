@@ -1,0 +1,5 @@
+This is a very long line that contains a lot of text to test how the sort utility handles long lines of text that might exceed internal buffer sizes or cause other issues when processing input data for sorting purposes.
+Another very long line with different content to ensure that the comparison functions work correctly with large amounts of text and don't have any buffer overflow or other memory-related issues when comparing strings.
+Yet another long line but this one starts with a Y which should place it later in the alphabet when sorting alphabetically to test the sorting algorithm with varying line lengths.
+A line that starts with A should be sorted first in the alphabet when using the default sorting method to verify that the sorting algorithm works correctly with lines of different lengths.
+Z should be the last line when sorting alphabetically to ensure that the entire alphabet range is handled correctly by the sorting algorithm and comparison functions.

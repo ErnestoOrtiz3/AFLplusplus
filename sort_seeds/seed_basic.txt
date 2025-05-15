@@ -1,0 +1,8 @@
+zebra
+apple
+banana
+orange
+42
+10
+5
+100

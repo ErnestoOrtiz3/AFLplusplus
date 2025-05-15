@@ -1,0 +1,12 @@
+apple
+apple
+banana
+banana
+orange
+orange
+42
+42
+10
+10
+5
+5
