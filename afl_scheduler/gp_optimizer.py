@@ -511,6 +511,25 @@ def expected_improvement(X, model, y_best, xi=0.01):
 
     return ei
 
+def upper_confidence_bound(X, model, kappa=2.0):
+    """
+    Compute the Upper Confidence Bound acquisition function.
+
+    Args:
+        X: Points at which to evaluate the acquisition function
+        model: Trained GP model
+        kappa: Exploration-exploitation trade-off parameter (higher values favor exploration)
+
+    Returns:
+        Upper confidence bound at points X
+    """
+    mu, sigma = model.predict(X, return_std=True)
+    
+    # UCB = mean + kappa * std
+    ucb = mu + kappa * sigma
+    
+    return ucb
+
 def train_gp_model(X_sample, y_sample):
     """
     Train a Gaussian Process model on the provided data.
@@ -557,14 +576,17 @@ def train_gp_model(X_sample, y_sample):
     return model, score_shift, shifted_y_sample
 
 
-def propose_next_parameters(X_sample, y_sample, bounds):
+def propose_next_parameters(X_sample, y_sample, bounds, acquisition_func="ucb", kappa=2.0, xi=0.01):
     """
-    Propose the next parameters to evaluate using GP and Expected Improvement.
+    Propose the next parameters to evaluate using GP and an acquisition function.
 
     Args:
         X_sample: Previously sampled parameters (normalized)
         y_sample: Observed scores
         bounds: Parameter bounds (normalized)
+        acquisition_func: Acquisition function to use ("ei" or "ucb")
+        kappa: Exploration parameter for UCB (higher values favor exploration)
+        xi: Exploration parameter for EI (higher values favor exploration)
 
     Returns:
         Next parameters to evaluate (normalized)
@@ -577,33 +599,42 @@ def propose_next_parameters(X_sample, y_sample, bounds):
     # Find the best observed value (using shifted scores)
     y_best = shifted_y_sample.max()
 
-    # Define the negative expected improvement function (for minimization)
-    def negative_ei(x):
-        return -expected_improvement(x.reshape(1, -1), model, y_best)
+    # Define the negative acquisition function (for minimization)
+    if acquisition_func.lower() == "ucb":
+        def negative_acq(x):
+            return -upper_confidence_bound(x.reshape(1, -1), model, kappa)
+        logger.info(f"Using Upper Confidence Bound acquisition function with kappa={kappa}")
+    else:  # Default to EI
+        def negative_acq(x):
+            return -expected_improvement(x.reshape(1, -1), model, y_best, xi)
+        logger.info(f"Using Expected Improvement acquisition function with xi={xi}")
 
     # Optimize the acquisition function
-    best_ei = -np.inf
+    best_acq = -np.inf
     best_x = None
 
     # Try multiple random starting points for more reliable optimization
-    n_restarts = 15  # Increased from 10
+    n_restarts = 15
     for _ in range(n_restarts):
         # Random starting point
         x0 = np.random.rand(len(bounds))
 
         # Optimize from this starting point
         result = minimize(
-            negative_ei,
+            negative_acq,
             x0,
             bounds=bounds,
             method='L-BFGS-B'
         )
 
-        if result.fun < -best_ei:
-            best_ei = -result.fun
+        if result.fun < -best_acq:
+            best_acq = -result.fun
             best_x = result.x
 
-    logger.info(f"Best expected improvement: {best_ei}")
+    if acquisition_func.lower() == "ucb":
+        logger.info(f"Best Upper Confidence Bound: {best_acq}")
+    else:
+        logger.info(f"Best Expected Improvement: {best_acq}")
 
     return best_x
 
@@ -673,7 +704,8 @@ def predict_optimal_parameters(X_sample, y_sample, bounds):
 
     return optimal_params, predicted_score
 
-def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEFAULT_INITIAL_SAMPLES, replications=DEFAULT_REPLICATIONS):
+def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEFAULT_INITIAL_SAMPLES, 
+         replications=DEFAULT_REPLICATIONS, acquisition_func="ucb", kappa=2.0, xi=0.01):
     """Main function to run the optimization.
 
     Args:
@@ -681,6 +713,9 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
         duration: Duration of each benchmark in minutes
         initial_samples: Number of initial random samples
         replications: Number of replications for each parameter combination
+        acquisition_func: Acquisition function to use ("ei" or "ucb")
+        kappa: Exploration parameter for UCB (higher values favor exploration)
+        xi: Exploration parameter for EI (higher values favor exploration)
     """
     # Ensure initial_samples doesn't exceed n_trials
     if initial_samples > n_trials:
@@ -692,6 +727,7 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
     
     logger.info(f"Starting Gaussian Process optimization with {n_trials} total trials ({initial_samples} initial + {optimization_trials} optimization)")
     logger.info(f"Each benchmark will run for {duration} minutes with {replications} replications")
+    logger.info(f"Using acquisition function: {acquisition_func}")
     logger.info(f"Results will be saved to {RESULTS_DIR}")
 
     # Save configuration
@@ -710,6 +746,9 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
         'duration': duration,
         'initial_samples': initial_samples,
         'replications': replications,
+        'acquisition_func': acquisition_func,
+        'kappa': kappa,
+        'xi': xi,
         'param_space': serializable_param_space,
         'metric_weights': METRIC_WEIGHTS,
         'start_time': datetime.now().isoformat()
@@ -751,8 +790,10 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
     bounds = [(0, 1) for _ in range(len(PARAM_SPACE))]
 
     for i in range(initial_samples + 1, n_trials + 1):
-        # Propose next parameters using GP and EI
-        next_params_normalized = propose_next_parameters(X_sample, y_sample, bounds)
+        # Propose next parameters using GP and acquisition function
+        next_params_normalized = propose_next_parameters(X_sample, y_sample, bounds, 
+                                                        acquisition_func=acquisition_func,
+                                                        kappa=kappa, xi=xi)
 
         # Convert normalized parameters to actual values
         param_dict = {}
@@ -1175,6 +1216,13 @@ if __name__ == "__main__":
                         help="Only generate visualizations for the most recent results")
     parser.add_argument("--results-dir", type=str,
                         help="Specify a results directory to visualize (for --visualize-only)")
+    parser.add_argument("--acquisition-func", type=str, default="ucb",
+                        choices=["ucb", "ei"],
+                        help="Acquisition function to use: ucb (Upper Confidence Bound) or ei (Expected Improvement) (default: ucb)")
+    parser.add_argument("--kappa", type=float, default=2.0,
+                        help="Exploration parameter for UCB (default: 2.0)")
+    parser.add_argument("--xi", type=float, default=0.01,
+                        help="Exploration parameter for EI (default: 0.01)")
 
     args = parser.parse_args()
 
@@ -1195,7 +1243,10 @@ if __name__ == "__main__":
             n_trials=args.trials,
             duration=args.duration,
             initial_samples=args.initial_samples,
-            replications=args.replications
+            replications=args.replications,
+            acquisition_func=args.acquisition_func,
+            kappa=args.kappa,
+            xi=args.xi
         )
 
         # Generate visualizations after optimization

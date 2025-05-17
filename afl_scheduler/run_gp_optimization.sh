@@ -14,6 +14,9 @@ TRIALS=2
 DURATION=1
 INITIAL_SAMPLES=1
 REPLICATIONS=1
+ACQUISITION="ucb"  # Default to UCB, EI is "ei"
+KAPPA=2.0
+XI=0.01
 VISUALIZE_ONLY=false
 RESULTS_DIR=""
 
@@ -34,6 +37,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --replications)
       REPLICATIONS="$2"
+      shift 2
+      ;;
+    --acquisition)
+      ACQUISITION="$2"
+      shift 2
+      ;;
+    --kappa)
+      KAPPA="$2"
+      shift 2
+      ;;
+    --xi)
+      XI="$2"
       shift 2
       ;;
     --visualize-only)
@@ -82,7 +97,10 @@ else
     --trials "$TRIALS" \
     --duration "$DURATION" \
     --initial-samples "$INITIAL_SAMPLES" \
-    --replications "$REPLICATIONS"
+    --replications "$REPLICATIONS" \
+    --acquisition "$ACQUISITION" \
+    --kappa "$KAPPA" \
+    --xi "$XI"
 fi
 
 echo "Optimization completed. Check the gp_optimization_results_* directory for results."
