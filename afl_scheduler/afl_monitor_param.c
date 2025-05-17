@@ -74,9 +74,9 @@ static fuzzer_info_t fuzzers[MAX_FUZZERS];
 static uint32_t fuzzer_count = 0;
 static time_t last_rebalance_time = 0;
 
-// BPF map file descriptors
-static int weights_map_fd = -1;
-static int boost_map_fd = -1;
+// BPF map file descriptors - no longer needed
+// static int weights_map_fd = -1;
+// static int boost_map_fd = -1;
 
 // Configurable parameters
 static uint32_t poll_interval_ms = POLL_INTERVAL_DEFAULT_MS;
@@ -94,11 +94,11 @@ static int debug_mode = 0;
 static void discover_afl_processes(void);
 static void update_fuzzer_stats(void);
 static void calculate_weights(void);
-static void update_bpf_maps(void);
+// static void update_bpf_maps(void); // No longer needed
 static void parse_fuzzer_stats(fuzzer_info_t *fuzzer);
 static void handle_signal(int sig);
 static uint64_t get_current_time_ms(void);
-static uint64_t get_current_time_us(void);
+// static uint64_t get_current_time_us(void); // No longer needed
 static void cleanup(void);
 static void print_usage(const char *prog_name);
 
@@ -164,31 +164,11 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
 
-    // Open BPF maps
-    weights_map_fd = bpf_obj_get(WEIGHTS_MAP_PATH);
-    if (weights_map_fd < 0) {
-        fprintf(stderr, "Failed to open weights map: %s\n", strerror(errno));
-        fprintf(stderr, "Make sure the BPF scheduler is loaded\n");
-        return 1;
-    }
-
-    boost_map_fd = bpf_obj_get(BOOST_MAP_PATH);
-    if (boost_map_fd < 0) {
-        fprintf(stderr, "Failed to open boost map: %s\n", strerror(errno));
-        close(weights_map_fd);
-        return 1;
-    }
-
-    printf("AFL++ CPU Scheduler Monitor started with the following parameters:\n");
+    printf("AFL++ CPU Scheduler Monitor started (Statistics Collection Mode)\n");
     printf("  Poll interval: %u ms\n", poll_interval_ms);
     printf("  Rebalance interval: %u sec\n", rebalance_interval_sec);
-    printf("  New path score: %.1f\n", new_path_score);
-    printf("  New crash score: %.1f\n", new_crash_score);
-    printf("  Score decay factor: %.3f\n", score_decay_factor);
-    printf("  Weight scale factor: %.1f\n", weight_scale_factor);
-    printf("  Minimum weight percent: %u%%\n", min_weight_percent);
-    printf("  Boost weight: %u\n", boost_weight);
-    printf("  Boost duration: %lu us\n", boost_duration_us);
+    printf("  Note: This monitor now only collects statistics\n");
+    printf("  Note: Boosting is handled directly in the kernel\n");
 
     // Main monitoring loop
     while (running) {
@@ -203,8 +183,8 @@ int main(int argc, char *argv[]) {
         // Calculate weights based on performance
         calculate_weights();
 
-        // Update BPF maps directly (now only updates weights)
-        update_bpf_maps();
+        // We no longer need to update BPF maps as boosting is handled in the kernel
+        // update_bpf_maps();
 
         // Periodic rebalancing
         time_t now = time(NULL);
@@ -254,8 +234,8 @@ static void print_usage(const char *prog_name) {
            BOOST_DURATION_DEFAULT_US);
     printf("  -D            Enable debug mode\n");
     printf("  -h            Show this help message\n");
-    printf("\nNote: Discovery events are now handled by the eBPF program directly.\n");
-    printf("      This monitor only polls for new AFL++ instances and updates weights.\n");
+    printf("\nNote: This monitor now only collects statistics.\n");
+    printf("      Boosting is handled directly by the eBPF program.\n");
 }
 
 // Discover AFL++ processes by scanning /proc
@@ -443,11 +423,7 @@ static void update_fuzzer_stats(void) {
             continue;
         }
 
-        // We no longer poll queue/ and crashes/ directories
-        // Discovery events are now handled by the eBPF program
-        // and boosts are applied directly
-
-        // Parse fuzzer_stats file for additional metrics (execs_per_sec, cycles_done)
+        // Parse fuzzer_stats file for metrics (execs_per_sec, cycles_done)
         parse_fuzzer_stats(fuzzer);
 
         // Apply score decay
@@ -457,11 +433,23 @@ static void update_fuzzer_stats(void) {
             float decay = powf(score_decay_factor, time_since_last_check);
             fuzzer->current_score *= decay;
         }
+        
+        // Update last active time
+        fuzzer->last_active = now;
+        
+        // Print statistics if in debug mode
+        if (debug_mode) {
+            printf("Fuzzer %s: execs/sec=%u, cycles=%u\n", 
+                   fuzzer->fuzzer_id, fuzzer->execs_per_sec, fuzzer->cycle_done);
+        }
     }
 }
 
 // Calculate scheduling weights based on fuzzer performance
 static void calculate_weights(void) {
+    // This function is now only for informational purposes
+    // as weights are no longer sent to the BPF maps
+    
     if (fuzzer_count == 0) {
         return;
     }
@@ -474,15 +462,13 @@ static void calculate_weights(void) {
         }
     }
 
-    // Calculate weights based on relative scores
+    // Calculate weights based on relative scores (for display only)
     uint32_t base_weight = 100;  // Base weight for fair share
-    uint32_t total_weight = 0;
-
+    
     for (uint32_t i = 0; i < fuzzer_count; i++) {
         float relative_score = fuzzers[i].current_score / max_score;
 
         // Calculate weight: base_weight * (1 + (weight_scale_factor - 1) * relative_score)
-        // This gives a range from base_weight to base_weight * weight_scale_factor
         uint32_t weight = base_weight * (1.0 + (weight_scale_factor - 1.0) * relative_score);
 
         // Ensure minimum weight
@@ -492,48 +478,21 @@ static void calculate_weights(void) {
         }
 
         fuzzers[i].weight = weight;
-        total_weight += weight;
-    }
-
-    // Normalize weights to ensure they sum to fuzzer_count * 100
-    uint32_t target_total = fuzzer_count * 100;
-    if (total_weight > 0) {
-        for (uint32_t i = 0; i < fuzzer_count; i++) {
-            fuzzers[i].weight = (fuzzers[i].weight * target_total) / total_weight;
-
-            // Ensure minimum weight after normalization
-            if (fuzzers[i].weight < min_weight_percent) {
-                fuzzers[i].weight = min_weight_percent;
-            }
+        
+        if (debug_mode) {
+            printf("Fuzzer %s: score=%.2f, weight=%u\n", 
+                   fuzzers[i].fuzzer_id, fuzzers[i].current_score, weight);
         }
     }
 }
 
 // Update BPF maps directly
-static void update_bpf_maps(void) {
-    uint64_t now = get_current_time_us(); // Keep using this function to avoid unused warning
-
-    for (uint32_t i = 0; i < fuzzer_count; i++) {
-        pid_t pid = fuzzers[i].pid;
-        uint32_t weight = fuzzers[i].weight;
-
-        if (pid <= 0) {
-            continue;
-        }
-
-        // Update weight in BPF map
-        bpf_map_update_elem(weights_map_fd, &pid, &weight, BPF_ANY);
-
-        // We no longer apply boosts here
-        // Boosts are now applied directly by the eBPF program
-        // when it receives discovery events
-
-        // Just log the current time to avoid unused warning
-        if (debug_mode) {
-            printf("Current time: %lu\n", now);
-        }
-    }
-}
+// This function is no longer needed as boosting is handled directly in the kernel
+// static void update_bpf_maps(void) {
+//     if (debug_mode) {
+//         printf("BPF map updates are now handled directly in the kernel\n");
+//     }
+// }
 
 // This function has been removed as we no longer poll directories
 // Discovery events are now handled by the eBPF program directly
@@ -608,23 +567,17 @@ static uint64_t get_current_time_ms(void) {
     return (uint64_t)tv.tv_sec * 1000 + (uint64_t)tv.tv_usec / 1000;
 }
 
-// Get current time in microseconds
-static uint64_t get_current_time_us(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
-}
+// Get current time in microseconds - no longer needed
+// static uint64_t get_current_time_us(void) {
+//     struct timespec ts;
+//     clock_gettime(CLOCK_MONOTONIC, &ts);
+//     return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+// }
 
 // Clean up resources
 static void cleanup(void) {
-    // Close BPF map file descriptors
-    if (weights_map_fd >= 0) {
-        close(weights_map_fd);
-    }
-
-    if (boost_map_fd >= 0) {
-        close(boost_map_fd);
-    }
-
+    // We no longer need to close BPF map file descriptors
+    // as we're not updating them anymore
+    
     printf("AFL++ CPU Scheduler Monitor shut down\n");
 }
