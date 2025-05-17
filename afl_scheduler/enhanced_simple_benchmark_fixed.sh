@@ -236,7 +236,8 @@ run_benchmark() {
             -w "$BOOST_WEIGHT" \
             -d "$BOOST_DECAY" \
             -s "$SLICE_US" \
-            -m "$SLICE_MIN_US" &
+            -m "$SLICE_MIN_US" \
+            -n "$NUM_INSTANCES" &
 
         # Wait for scheduler to initialize
         sleep 5

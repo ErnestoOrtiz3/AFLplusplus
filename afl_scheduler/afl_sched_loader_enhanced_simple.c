@@ -73,6 +73,7 @@ static u32 boost_weight = DEFAULT_BOOST_WEIGHT;
 static u64 slice_us = DEFAULT_SLICE_US;
 static u64 slice_min_us = DEFAULT_SLICE_MIN_US;
 static u64 boost_decay_period_us = DEFAULT_BOOST_DECAY_PERIOD_US;
+static int expected_instances = 0;  // 0 means keep scanning indefinitely
 
 // Function prototypes
 static void handle_signal(int sig);
@@ -88,7 +89,7 @@ int main(int argc, char *argv[]) {
     int opt;
 
     // Parse command line arguments
-    while ((opt = getopt(argc, argv, "b:w:s:m:d:h")) != -1) {
+    while ((opt = getopt(argc, argv, "b:w:s:m:d:n:h")) != -1) {
         switch (opt) {
             case 'b':
                 boost_duration_us = strtoull(optarg, NULL, 10);
@@ -121,6 +122,12 @@ int main(int argc, char *argv[]) {
                 boost_decay_period_us = strtoull(optarg, NULL, 10);
                 if (boost_decay_period_us < 100000) { // Minimum 100ms
                     boost_decay_period_us = 100000;
+                }
+                break;
+            case 'n':
+                expected_instances = atoi(optarg);
+                if (expected_instances < 0) {
+                    expected_instances = 0;  // 0 means keep scanning indefinitely
                 }
                 break;
             case 'h':
@@ -207,6 +214,11 @@ int main(int argc, char *argv[]) {
     printf("  📊 Weights map: %s\n", WEIGHTS_MAP_PATH);
     printf("  🚀 Boost map: %s\n", BOOST_MAP_PATH);
     printf("\n🔄 Direct BPF boosting enabled (microsecond latency)\n");
+    if (expected_instances > 0) {
+        printf("🔍 Will stop scanning after attaching to %d AFL++ instances\n", expected_instances);
+    } else {
+        printf("🔍 Will scan indefinitely for AFL++ instances\n");
+    }
     printf("==================================================\n");
 
     // We'll attach the uretprobe when AFL++ starts running
@@ -251,12 +263,28 @@ int main(int argc, char *argv[]) {
         static bool detection_in_progress = false;
         time_t current_time = time(NULL);
 
-        // Always check for new AFL++ instances, but at different intervals
-        // - If we haven't attached to any processes yet, check very frequently
-        // - If we've already attached to some processes, check less frequently
-        int check_interval = uretprobe_attached ? 2 : 0;  // 0 = every poll, 2 = every 2 seconds
+        // Check if we've reached the expected number of instances
+        static bool all_instances_attached = false;
 
-        if (current_time - last_check_time >= check_interval) {
+        if (expected_instances > 0 && attached_pid_count >= expected_instances && !all_instances_attached) {
+            // We've attached to all expected instances, no need to scan anymore
+            printf("\n🎉 SUCCESS: Attached to all %d expected AFL++ instances!\n", expected_instances);
+            printf("✅ Monitoring is active and direct BPF boosting is enabled\n");
+            printf("✅ No longer scanning for new instances\n");
+            printf("✅ Press Ctrl+C to exit\n\n");
+
+            // Set flag to completely stop all scanning
+            all_instances_attached = true;
+        }
+
+        // Only continue scanning if we haven't reached the target or no target was specified
+        if (!all_instances_attached && (expected_instances == 0 || attached_pid_count < expected_instances)) {
+            // Always check for new AFL++ instances, but at different intervals
+            // - If we haven't attached to any processes yet, check very frequently
+            // - If we've already attached to some processes, check less frequently
+            int check_interval = uretprobe_attached ? 2 : 0;  // 0 = every poll, 2 = every 2 seconds
+
+            if (current_time - last_check_time >= check_interval) {
             last_check_time = current_time;
 
             // If this is our first detection attempt, print a message
@@ -273,19 +301,21 @@ int main(int argc, char *argv[]) {
 
                 // If we found any AFL++ processes
                 if (pid_count > 0) {
-                    printf("\n⚡ Detected %d AFL++ processes, attaching uretprobe...\n", pid_count);
+                    if (pid_count < expected_instances) {
+                        printf("\n⚡ Detected %d AFL++ processes, attaching uretprobe...\n", pid_count);
 
-                    // Print all detected PIDs
-                    printf("📊 Detected PIDs: ");
-                    for (int i = 0; i < pid_count; i++) {
-                        printf("%d ", pids[i]);
-                    }
-                    printf("\n");
+                        // Print all detected PIDs
+                        printf("📊 Detected PIDs: ");
+                        for (int i = 0; i < pid_count; i++) {
+                            printf("%d ", pids[i]);
+                        }
+                        printf("\n");
 
-                    // Calculate detection time
-                    if (first_detection_time > 0) {
-                        printf("⏱️  Detection time: %ld seconds after startup\n",
-                               current_time - first_detection_time);
+                        // Calculate detection time
+                        if (first_detection_time > 0) {
+                            printf("⏱️  Detection time: %ld seconds after startup\n",
+                                current_time - first_detection_time);
+                        }
                     }
 
                     // Find the offset of save_if_interesting function
@@ -377,6 +407,7 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+}
 
     cleanup();
     return 0;
@@ -395,6 +426,8 @@ static void print_usage(const char *prog_name) {
            (unsigned long long)DEFAULT_SLICE_US);
     printf("  -m MIN_SLICE Minimum time slice in microseconds (default: %llu)\n",
            (unsigned long long)DEFAULT_SLICE_MIN_US);
+    printf("  -n INSTANCES Number of AFL++ instances to expect (default: 0 = scan indefinitely)\n");
+    printf("               When set, the loader will stop scanning after attaching to this many instances\n");
     printf("  -h           Show this help message\n");
 }
 
