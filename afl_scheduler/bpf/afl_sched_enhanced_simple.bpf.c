@@ -4,6 +4,9 @@
  *
  * This is an enhanced version of the custom scheduler for AFL++ fuzzing processes.
  * It includes optimizations for better performance and more effective prioritization.
+ *
+ * It also includes a uretprobe on the save_if_interesting function to detect
+ * new discoveries (paths, crashes) and send events to user-space via perf events.
  */
 
 /* Define this before including any headers to avoid duplicate definitions */
@@ -108,6 +111,22 @@ struct {
     __type(key, pid_t);
     __type(value, u64);
 } afl_total_boost_time SEC(".maps");
+
+/* Discovery event structure */
+struct discovery_event {
+    __u32 pid;           // Process ID that made the discovery
+    __u64 timestamp;     // Timestamp of the discovery
+    __u8 discovery_type; // 0 = path, 1 = crash, 2 = timeout
+    __u8 saved;          // Return value from save_if_interesting (1 if saved, 0 if not)
+};
+
+/* Perf event map for sending discovery events to user-space */
+struct {
+    __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+    __uint(key_size, sizeof(int));
+    __uint(value_size, sizeof(int));
+    __uint(max_entries, 1024);
+} discovery_events SEC(".maps");
 
 /* Helper functions */
 
@@ -382,10 +401,8 @@ s32 BPF_STRUCT_OPS(afl_sched_init)
 
     bpf_map_update_elem(&min_vruntime, &key, &zero, BPF_ANY);
 
-    // Create a shared DSQ for non-AFL processes
-    // This will be used for system processes with lower priority
-    // Use node -1 to make it accessible from all CPUs
-    scx_bpf_create_dsq(NON_AFL_SHARED_DSQ, -1);
+    // We'll use SCX_DSQ_LOCAL for all processes instead of creating a shared DSQ
+    // This avoids the need for the sleepable flag
 
     return 0;
 }
@@ -490,18 +507,10 @@ s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
         return 0;
     }
 
-    // Fast path for non-AFL processes
-    if (!is_afl_process_fast(p)) {
+    // Check if this is an AFL process (fast check first, then full check if needed)
+    if (!is_afl_process_fast(p) || !(is_afl = is_afl_process(p))) {
         // Non-AFL processes go to the shared non-AFL queue
         // They will only run when local queues are empty
-        scx_bpf_dsq_insert(p, NON_AFL_SHARED_DSQ, slice_us, 0);
-        return 0;
-    }
-
-    // Confirm this is an AFL process with full check
-    is_afl = is_afl_process(p);
-    if (!is_afl) {
-        // Non-AFL processes go to the shared non-AFL queue
         scx_bpf_dsq_insert(p, NON_AFL_SHARED_DSQ, slice_us, 0);
         return 0;
     }
@@ -661,6 +670,50 @@ s32 BPF_STRUCT_OPS(afl_sched_dispatch, s32 cpu, struct task_struct *prev)
     return -ENOENT;
 }
 
+/* Attach to the return of save_if_interesting function */
+SEC("uretprobe/save_if_interesting:function")
+int trace_save_if_interesting_ret(struct pt_regs *ctx)
+{
+    struct discovery_event event = {};
+
+    // Get the return value (1 if saved, 0 if not)
+    u8 ret = PT_REGS_RC(ctx);
+
+    // Get the current PID
+    u32 pid = bpf_get_current_pid_tgid() >> 32;
+    event.pid = pid;
+
+    // Get current timestamp (in nanoseconds)
+    u64 now_ns = bpf_ktime_get_ns();
+    event.timestamp = now_ns;
+
+    // For now, we don't know the discovery type (will be determined in user-space)
+    // We'll use the monitoring daemon to check if it's a path or crash
+    event.discovery_type = 0;
+
+    // Store the return value
+    event.saved = ret;
+
+    // Only process actual discoveries (when something was saved)
+    if (event.saved) {
+        // DIRECT BOOST: Update the boost map directly from BPF
+        // Convert nanoseconds to microseconds for consistency with other time values
+        u64 now_us = now_ns / 1000;
+
+        // Calculate boost until timestamp
+        u64 boost_until = now_us + prio_boost_duration_us;
+
+        // Update the boost map directly
+        bpf_map_update_elem(&afl_boost_until, &pid, &boost_until, BPF_ANY);
+
+        // Send the event to user-space via perf event (for monitoring only)
+        bpf_perf_event_output(ctx, &discovery_events, BPF_F_CURRENT_CPU,
+                             &event, sizeof(event));
+    }
+
+    return 0;
+}
+
 SEC(".struct_ops.link")
 struct sched_ext_ops afl_sched_ops = {
     .init = (void *)afl_sched_init,
@@ -669,4 +722,5 @@ struct sched_ext_ops afl_sched_ops = {
     .enqueue = (void *)afl_sched_enqueue,
     .dispatch = (void *)afl_sched_dispatch,
     .name = "afl_sched",
+    .flags = 0, /* No special flags needed */
 };

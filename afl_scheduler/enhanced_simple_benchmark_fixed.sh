@@ -4,9 +4,9 @@
 #
 
 # Default benchmark parameters
-DURATION=1
+DURATION=5
 NUM_INSTANCES=4
-TARGET_PROGRAM="./sort-simple"
+TARGET_PROGRAM="./complex_target_afl"
 TARGET_ARGS="@@"
 MEMORY_LIMIT="none"
 TIMEOUT="7500+"
@@ -14,11 +14,11 @@ SCHEDULER_ORDER="custom_first"
 CUSTOM_RESULTS_DIR=""   # Optional custom results directory
 
 # Default scheduler parameters
-BOOST_DURATION=1000000  # 1 second in microseconds
-BOOST_WEIGHT=1000       # Default boost weight
-BOOST_DECAY=2000000     # 2 seconds decay period
-SLICE_US=20000          # Default time slice
-SLICE_MIN_US=5000       # Minimum time slice
+BOOST_DURATION=3372000
+BOOST_WEIGHT=3000
+BOOST_DECAY=3240000
+SLICE_US=37000
+SLICE_MIN_US=8000
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -285,7 +285,7 @@ run_benchmark() {
         POWER_SCHEDULE=$(assign_power_schedule "$i" "$NUM_INSTANCES")
 
         # Start AFL++ instance
-        sudo AFL_NO_AFFINITY=1 /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/sort_seeds -o "$output_dir" \
+        sudo AFL_NO_AFFINITY=1 /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/original_seeds -o "$output_dir" \
             $AFL_MODE "fuzzer$i" -t "$TIMEOUT" -m "$MEMORY_LIMIT" $POWER_SCHEDULE \
             -- "$TARGET_PROGRAM" "$TARGET_ARGS" &
 

@@ -88,13 +88,13 @@ static float weight_scale_factor = WEIGHT_SCALE_FACTOR_DEFAULT;
 static uint32_t min_weight_percent = MIN_WEIGHT_PERCENT_DEFAULT;
 static uint32_t boost_weight = BOOST_WEIGHT_DEFAULT;
 static uint64_t boost_duration_us = BOOST_DURATION_DEFAULT_US;
+static int debug_mode = 0;
 
 // Function prototypes
 static void discover_afl_processes(void);
 static void update_fuzzer_stats(void);
 static void calculate_weights(void);
 static void update_bpf_maps(void);
-static uint32_t count_files_in_dir(const char *dir_path, time_t *mtime);
 static void parse_fuzzer_stats(fuzzer_info_t *fuzzer);
 static void handle_signal(int sig);
 static uint64_t get_current_time_ms(void);
@@ -104,9 +104,9 @@ static void print_usage(const char *prog_name);
 
 int main(int argc, char *argv[]) {
     int opt;
-    
+
     // Parse command line arguments
-    while ((opt = getopt(argc, argv, "i:r:p:c:d:w:m:b:t:h")) != -1) {
+    while ((opt = getopt(argc, argv, "i:r:p:c:d:w:m:b:t:Dh")) != -1) {
         switch (opt) {
             case 'i': // Poll interval
                 poll_interval_ms = atoi(optarg);
@@ -147,6 +147,10 @@ int main(int argc, char *argv[]) {
                 boost_duration_us = atoll(optarg);
                 if (boost_duration_us < 100000) boost_duration_us = 100000; // Minimum 100ms
                 break;
+            case 'D': // Debug mode
+                debug_mode = 1;
+                printf("Debug mode enabled\n");
+                break;
             case 'h':
                 print_usage(argv[0]);
                 return 0;
@@ -155,11 +159,11 @@ int main(int argc, char *argv[]) {
                 return 1;
         }
     }
-    
+
     // Set up signal handlers
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
-    
+
     // Open BPF maps
     weights_map_fd = bpf_obj_get(WEIGHTS_MAP_PATH);
     if (weights_map_fd < 0) {
@@ -167,14 +171,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Make sure the BPF scheduler is loaded\n");
         return 1;
     }
-    
+
     boost_map_fd = bpf_obj_get(BOOST_MAP_PATH);
     if (boost_map_fd < 0) {
         fprintf(stderr, "Failed to open boost map: %s\n", strerror(errno));
         close(weights_map_fd);
         return 1;
     }
-    
+
     printf("AFL++ CPU Scheduler Monitor started with the following parameters:\n");
     printf("  Poll interval: %u ms\n", poll_interval_ms);
     printf("  Rebalance interval: %u sec\n", rebalance_interval_sec);
@@ -185,23 +189,23 @@ int main(int argc, char *argv[]) {
     printf("  Minimum weight percent: %u%%\n", min_weight_percent);
     printf("  Boost weight: %u\n", boost_weight);
     printf("  Boost duration: %lu us\n", boost_duration_us);
-    
+
     // Main monitoring loop
     while (running) {
         uint64_t start_time = get_current_time_ms();
-        
-        // Discover AFL++ processes
+
+        // Discover AFL++ processes (still polling for new instances)
         discover_afl_processes();
-        
-        // Update fuzzer statistics
+
+        // Update fuzzer statistics (now only parses fuzzer_stats)
         update_fuzzer_stats();
-        
+
         // Calculate weights based on performance
         calculate_weights();
-        
-        // Update BPF maps directly
+
+        // Update BPF maps directly (now only updates weights)
         update_bpf_maps();
-        
+
         // Periodic rebalancing
         time_t now = time(NULL);
         if (now - last_rebalance_time > rebalance_interval_sec) {
@@ -212,14 +216,15 @@ int main(int argc, char *argv[]) {
             }
             last_rebalance_time = now;
         }
-        
+
         // Adaptive sleep to maintain consistent polling interval
+        // We can use a longer interval now since we're only polling for new instances
         uint64_t elapsed = get_current_time_ms() - start_time;
         if (elapsed < poll_interval_ms) {
             usleep((poll_interval_ms - elapsed) * 1000);
         }
     }
-    
+
     cleanup();
     return 0;
 }
@@ -228,7 +233,8 @@ int main(int argc, char *argv[]) {
 static void print_usage(const char *prog_name) {
     printf("Usage: %s [options]\n", prog_name);
     printf("Options:\n");
-    printf("  -i INTERVAL   Polling interval in milliseconds (default: %u, min: %u, max: %u)\n",
+    printf("  -i INTERVAL   Polling interval for discovering new AFL++ instances in milliseconds\n");
+    printf("                (default: %u, min: %u, max: %u)\n",
            POLL_INTERVAL_DEFAULT_MS, POLL_INTERVAL_MIN_MS, POLL_INTERVAL_MAX_MS);
     printf("  -r INTERVAL   Rebalance interval in seconds (default: %u)\n",
            REBALANCE_INTERVAL_DEFAULT_SEC);
@@ -246,7 +252,10 @@ static void print_usage(const char *prog_name) {
            BOOST_WEIGHT_DEFAULT);
     printf("  -t DURATION   Boost duration in microseconds (default: %u)\n",
            BOOST_DURATION_DEFAULT_US);
+    printf("  -D            Enable debug mode\n");
     printf("  -h            Show this help message\n");
+    printf("\nNote: Discovery events are now handled by the eBPF program directly.\n");
+    printf("      This monitor only polls for new AFL++ instances and updates weights.\n");
 }
 
 // Discover AFL++ processes by scanning /proc
@@ -256,41 +265,41 @@ static void discover_afl_processes(void) {
     char cmdline_path[MAX_PATH];
     char cmdline[4096];
     int fd;
-    
+
     // Mark all fuzzers as potentially inactive
     for (uint32_t i = 0; i < fuzzer_count; i++) {
         fuzzers[i].pid = -1;  // Temporarily mark as inactive
     }
-    
+
     proc_dir = opendir("/proc");
     if (!proc_dir) {
         perror("Failed to open /proc");
         return;
     }
-    
+
     // Scan all processes
     while ((entry = readdir(proc_dir)) != NULL) {
         // Skip non-numeric entries (not PIDs)
         if (entry->d_name[0] < '0' || entry->d_name[0] > '9') {
             continue;
         }
-        
+
         pid_t pid = atoi(entry->d_name);
-        
+
         // Read command line
         snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%d/cmdline", pid);
         fd = open(cmdline_path, O_RDONLY);
         if (fd == -1) {
             continue;  // Process may have terminated
         }
-        
+
         ssize_t len = read(fd, cmdline, sizeof(cmdline) - 1);
         close(fd);
-        
+
         if (len <= 0) {
             continue;
         }
-        
+
         // Null-terminate and replace null bytes with spaces for easier parsing
         cmdline[len] = '\0';
         for (ssize_t i = 0; i < len - 1; i++) {
@@ -298,12 +307,12 @@ static void discover_afl_processes(void) {
                 cmdline[i] = ' ';
             }
         }
-        
+
         // Check if this is an AFL++ process
         if (strstr(cmdline, "afl-fuzz") == NULL) {
             continue;
         }
-        
+
         // Extract output directory (-o flag)
         char *out_dir = NULL;
         char *o_flag = strstr(cmdline, " -o ");
@@ -317,7 +326,7 @@ static void discover_afl_processes(void) {
             }
             *end = '\0';
         }
-        
+
         // Extract fuzzer ID (-S flag)
         char *fuzzer_id = NULL;
         char *s_flag = strstr(cmdline, " -S ");
@@ -344,7 +353,7 @@ static void discover_afl_processes(void) {
                 *end = '\0';
             }
         }
-        
+
         // If we found both output directory and fuzzer ID
         if (out_dir && fuzzer_id) {
             // Check if we already know this fuzzer
@@ -359,46 +368,46 @@ static void discover_afl_processes(void) {
                     break;
                 }
             }
-            
+
             // If this is a new fuzzer
             if (!found && fuzzer_count < MAX_FUZZERS) {
                 fuzzer_info_t *fuzzer = &fuzzers[fuzzer_count];
                 memset(fuzzer, 0, sizeof(fuzzer_info_t));
-                
+
                 fuzzer->pid = pid;
                 strncpy(fuzzer->fuzzer_id, fuzzer_id, sizeof(fuzzer->fuzzer_id) - 1);
                 strncpy(fuzzer->out_dir, out_dir, sizeof(fuzzer->out_dir) - 1);
-                
+
                 // Construct paths to queue and crashes directories
                 if (fuzzer_id[0]) {
-                    snprintf(fuzzer->queue_dir, sizeof(fuzzer->queue_dir), 
+                    snprintf(fuzzer->queue_dir, sizeof(fuzzer->queue_dir),
                              "%s/%s/queue", out_dir, fuzzer_id);
-                    snprintf(fuzzer->crashes_dir, sizeof(fuzzer->crashes_dir), 
+                    snprintf(fuzzer->crashes_dir, sizeof(fuzzer->crashes_dir),
                              "%s/%s/crashes", out_dir, fuzzer_id);
                 } else {
-                    snprintf(fuzzer->queue_dir, sizeof(fuzzer->queue_dir), 
+                    snprintf(fuzzer->queue_dir, sizeof(fuzzer->queue_dir),
                              "%s/queue", out_dir);
-                    snprintf(fuzzer->crashes_dir, sizeof(fuzzer->crashes_dir), 
+                    snprintf(fuzzer->crashes_dir, sizeof(fuzzer->crashes_dir),
                              "%s/crashes", out_dir);
                 }
-                
+
                 fuzzer->start_time = fuzzer->last_active = time(NULL);
                 fuzzer->weight = 100;  // Default weight
-                
-                printf("Discovered new AFL++ instance: PID=%d, ID=%s, Dir=%s\n", 
+
+                printf("Discovered new AFL++ instance: PID=%d, ID=%s, Dir=%s\n",
                        pid, fuzzer_id, out_dir);
-                
+
                 fuzzer_count++;
             }
         }
-        
+
         // Free allocated memory
         if (out_dir) free(out_dir);
         if (fuzzer_id) free(fuzzer_id);
     }
-    
+
     closedir(proc_dir);
-    
+
     // Remove inactive fuzzers
     for (uint32_t i = 0; i < fuzzer_count; i++) {
         if (fuzzers[i].pid == -1) {
@@ -407,12 +416,12 @@ static void discover_afl_processes(void) {
             snprintf(proc_path, sizeof(proc_path), "/proc/%d", fuzzers[i].pid);
             if (access(proc_path, F_OK) == -1) {
                 // Process is gone, remove it from our list
-                printf("AFL++ instance terminated: PID=%d, ID=%s\n", 
+                printf("AFL++ instance terminated: PID=%d, ID=%s\n",
                        fuzzers[i].pid, fuzzers[i].fuzzer_id);
-                
+
                 // Remove by shifting remaining entries
                 if (i < fuzzer_count - 1) {
-                    memmove(&fuzzers[i], &fuzzers[i + 1], 
+                    memmove(&fuzzers[i], &fuzzers[i + 1],
                             (fuzzer_count - i - 1) * sizeof(fuzzer_info_t));
                 }
                 fuzzer_count--;
@@ -425,56 +434,22 @@ static void discover_afl_processes(void) {
 // Update statistics for all active fuzzers
 static void update_fuzzer_stats(void) {
     time_t now = time(NULL);
-    
+
     for (uint32_t i = 0; i < fuzzer_count; i++) {
         fuzzer_info_t *fuzzer = &fuzzers[i];
-        
+
         // Skip inactive fuzzers
         if (fuzzer->pid <= 0) {
             continue;
         }
-        
-        // Check queue directory for new paths
-        time_t queue_mtime;
-        uint32_t new_queue_count = count_files_in_dir(fuzzer->queue_dir, &queue_mtime);
-        
-        // Check crashes directory for new crashes
-        time_t crashes_mtime;
-        uint32_t new_crashes_count = count_files_in_dir(fuzzer->crashes_dir, &crashes_mtime);
-        
-        // Detect new paths
-        if (new_queue_count > fuzzer->queue_count) {
-            uint32_t new_paths = new_queue_count - fuzzer->queue_count;
-            printf("Fuzzer %s found %u new paths (total: %u)\n", 
-                   fuzzer->fuzzer_id, new_paths, new_queue_count);
-            
-            // Update score based on new paths
-            fuzzer->current_score += new_path_score * new_paths;
-            fuzzer->last_active = now;
-            fuzzer->last_path_time = now;
-        }
-        
-        // Detect new crashes
-        if (new_crashes_count > fuzzer->crashes_count) {
-            uint32_t new_crashes = new_crashes_count - fuzzer->crashes_count;
-            printf("Fuzzer %s found %u new crashes (total: %u)\n", 
-                   fuzzer->fuzzer_id, new_crashes, new_crashes_count);
-            
-            // Update score based on new crashes
-            fuzzer->current_score += new_crash_score * new_crashes;
-            fuzzer->last_active = now;
-            fuzzer->last_crash_time = now;
-        }
-        
-        // Update counts
-        fuzzer->queue_count = new_queue_count;
-        fuzzer->crashes_count = new_crashes_count;
-        fuzzer->dir_mtime_queue = queue_mtime;
-        fuzzer->dir_mtime_crashes = crashes_mtime;
-        
-        // Parse fuzzer_stats file for additional metrics
+
+        // We no longer poll queue/ and crashes/ directories
+        // Discovery events are now handled by the eBPF program
+        // and boosts are applied directly
+
+        // Parse fuzzer_stats file for additional metrics (execs_per_sec, cycles_done)
         parse_fuzzer_stats(fuzzer);
-        
+
         // Apply score decay
         float time_since_last_check = (float)(now - fuzzer->last_active);
         if (time_since_last_check > 0) {
@@ -490,7 +465,7 @@ static void calculate_weights(void) {
     if (fuzzer_count == 0) {
         return;
     }
-    
+
     // Find the highest score
     float max_score = 0.1;  // Avoid division by zero
     for (uint32_t i = 0; i < fuzzer_count; i++) {
@@ -498,34 +473,34 @@ static void calculate_weights(void) {
             max_score = fuzzers[i].current_score;
         }
     }
-    
+
     // Calculate weights based on relative scores
     uint32_t base_weight = 100;  // Base weight for fair share
     uint32_t total_weight = 0;
-    
+
     for (uint32_t i = 0; i < fuzzer_count; i++) {
         float relative_score = fuzzers[i].current_score / max_score;
-        
+
         // Calculate weight: base_weight * (1 + (weight_scale_factor - 1) * relative_score)
         // This gives a range from base_weight to base_weight * weight_scale_factor
         uint32_t weight = base_weight * (1.0 + (weight_scale_factor - 1.0) * relative_score);
-        
+
         // Ensure minimum weight
         uint32_t min_weight = (base_weight * min_weight_percent) / 100;
         if (weight < min_weight) {
             weight = min_weight;
         }
-        
+
         fuzzers[i].weight = weight;
         total_weight += weight;
     }
-    
+
     // Normalize weights to ensure they sum to fuzzer_count * 100
     uint32_t target_total = fuzzer_count * 100;
     if (total_weight > 0) {
         for (uint32_t i = 0; i < fuzzer_count; i++) {
             fuzzers[i].weight = (fuzzers[i].weight * target_total) / total_weight;
-            
+
             // Ensure minimum weight after normalization
             if (fuzzers[i].weight < min_weight_percent) {
                 fuzzers[i].weight = min_weight_percent;
@@ -536,116 +511,64 @@ static void calculate_weights(void) {
 
 // Update BPF maps directly
 static void update_bpf_maps(void) {
-    uint64_t now = get_current_time_us();
-    
+    uint64_t now = get_current_time_us(); // Keep using this function to avoid unused warning
+
     for (uint32_t i = 0; i < fuzzer_count; i++) {
         pid_t pid = fuzzers[i].pid;
         uint32_t weight = fuzzers[i].weight;
-        
+
         if (pid <= 0) {
             continue;
         }
-        
+
         // Update weight in BPF map
         bpf_map_update_elem(weights_map_fd, &pid, &weight, BPF_ANY);
-        
-        // Check if this fuzzer recently found a new path or crash
-        time_t last_path_time = fuzzers[i].last_path_time;
-        time_t last_crash_time = fuzzers[i].last_crash_time;
-        
-        // Convert to microseconds for comparison with now
-        uint64_t last_path_us = last_path_time * 1000000;
-        uint64_t last_crash_us = last_crash_time * 1000000;
-        
-        // If a new crash was found recently, apply extended boost
-        if (now - last_crash_us < boost_duration_us * 3) {
-            // Extended boost for crashes (3x normal duration)
-            uint64_t boost_until = now + boost_duration_us * 3;
-            bpf_map_update_elem(boost_map_fd, &pid, &boost_until, BPF_ANY);
-            printf("Boosting fuzzer PID %d for CRASH until %lu\n", pid, boost_until);
-        }
-        // Otherwise, if a new path was found recently, apply normal boost
-        else if (now - last_path_us < boost_duration_us) {
-            // Normal boost for paths
-            uint64_t boost_until = now + boost_duration_us;
-            bpf_map_update_elem(boost_map_fd, &pid, &boost_until, BPF_ANY);
-            printf("Boosting fuzzer PID %d for path until %lu\n", pid, boost_until);
+
+        // We no longer apply boosts here
+        // Boosts are now applied directly by the eBPF program
+        // when it receives discovery events
+
+        // Just log the current time to avoid unused warning
+        if (debug_mode) {
+            printf("Current time: %lu\n", now);
         }
     }
 }
 
-// Count files in a directory and get its modification time
-static uint32_t count_files_in_dir(const char *dir_path, time_t *mtime) {
-    DIR *dir;
-    struct dirent *entry;
-    uint32_t count = 0;
-    struct stat st;
-    
-    // Get directory modification time
-    if (stat(dir_path, &st) == 0) {
-        *mtime = st.st_mtime;
-    } else {
-        *mtime = 0;
-    }
-    
-    // Open directory
-    dir = opendir(dir_path);
-    if (!dir) {
-        return 0;
-    }
-    
-    // Count files
-    while ((entry = readdir(dir)) != NULL) {
-        // Skip . and ..
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-        
-        // Skip directories
-        char full_path[MAX_PATH];
-        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
-        if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-            continue;
-        }
-        
-        count++;
-    }
-    
-    closedir(dir);
-    return count;
-}
+// This function has been removed as we no longer poll directories
+// Discovery events are now handled by the eBPF program directly
 
 // Parse fuzzer_stats file for additional metrics
 static void parse_fuzzer_stats(fuzzer_info_t *fuzzer) {
     char stats_path[MAX_PATH];
     FILE *f;
     char line[512];
-    
+
     // Construct path to fuzzer_stats file
     if (fuzzer->fuzzer_id[0]) {
-        if (snprintf(stats_path, sizeof(stats_path), "%s/%s/fuzzer_stats", 
+        if (snprintf(stats_path, sizeof(stats_path), "%s/%s/fuzzer_stats",
                  fuzzer->out_dir, fuzzer->fuzzer_id) >= sizeof(stats_path)) {
             fprintf(stderr, "Warning: stats_path truncated for fuzzer %s\n", fuzzer->fuzzer_id);
             return;
         }
     } else {
-        if (snprintf(stats_path, sizeof(stats_path), "%s/fuzzer_stats", 
+        if (snprintf(stats_path, sizeof(stats_path), "%s/fuzzer_stats",
                  fuzzer->out_dir) >= sizeof(stats_path)) {
             fprintf(stderr, "Warning: stats_path truncated\n");
             return;
         }
     }
-    
+
     f = fopen(stats_path, "r");
     if (!f) {
         return;
     }
-    
+
     while (fgets(line, sizeof(line), f)) {
         // Remove newline
         char *nl = strchr(line, '\n');
         if (nl) *nl = '\0';
-        
+
         // Parse execs_per_sec
         if (strncmp(line, "execs_per_sec", 13) == 0) {
             char *value = strchr(line, ':');
@@ -653,7 +576,7 @@ static void parse_fuzzer_stats(fuzzer_info_t *fuzzer) {
                 fuzzer->execs_per_sec = atoi(value + 1);
             }
         }
-        
+
         // Parse cycles_done
         else if (strncmp(line, "cycles_done", 11) == 0) {
             char *value = strchr(line, ':');
@@ -668,7 +591,7 @@ static void parse_fuzzer_stats(fuzzer_info_t *fuzzer) {
             }
         }
     }
-    
+
     fclose(f);
 }
 
@@ -698,10 +621,10 @@ static void cleanup(void) {
     if (weights_map_fd >= 0) {
         close(weights_map_fd);
     }
-    
+
     if (boost_map_fd >= 0) {
         close(boost_map_fd);
     }
-    
+
     printf("AFL++ CPU Scheduler Monitor shut down\n");
 }

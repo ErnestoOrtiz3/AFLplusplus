@@ -4,9 +4,9 @@
 #
 
 # Default benchmark parameters
-DURATION=1
+DURATION=5
 NUM_INSTANCES=4
-TARGET_PROGRAM="./sort-simple"
+TARGET_PROGRAM="./complex_target_afl"
 TARGET_ARGS="@@"
 MEMORY_LIMIT="none"
 TIMEOUT="7500+"
