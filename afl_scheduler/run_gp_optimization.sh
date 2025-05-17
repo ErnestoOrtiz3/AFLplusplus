@@ -10,7 +10,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # Default parameters
-TRIALS=1
+TRIALS=2
 DURATION=1
 INITIAL_SAMPLES=1
 REPLICATIONS=1

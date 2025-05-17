@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger("gp_optimizer")
 
 # Constants
-DEFAULT_TRIALS = 1
+DEFAULT_TRIALS = 2
 DEFAULT_DURATION = 1  # minutes per benchmark
 DEFAULT_INITIAL_SAMPLES = 1
 DEFAULT_REPLICATIONS = 1  # Number of replications for each parameter combination
@@ -185,13 +185,13 @@ def run_benchmark(params, trial_num, duration, replications=DEFAULT_REPLICATIONS
             logger.error(f"Could not find results directory for trial {trial_num}, replication {rep}")
             continue  # Try the next replication
 
-        # Parse the results
-        report_path = results_dir / "comparison_report.txt"
+        # Look for the custom report instead of comparison report
+        report_path = results_dir / "custom_report.txt"
         if not report_path.exists():
-            logger.error(f"Comparison report not found for trial {trial_num}, replication {rep}")
-            continue  # Try the next replication
+            logger.error(f"Custom report not found for trial {trial_num}")
+            return None
 
-        # Parse the comparison report to extract metrics
+        # Parse the custom report to extract metrics
         metrics = parse_comparison_report(report_path)
 
         # Calculate the composite score
@@ -229,71 +229,83 @@ def run_benchmark(params, trial_num, duration, replications=DEFAULT_REPLICATIONS
     }
 
 def parse_comparison_report(report_path):
-    """Parse the comparison report to extract metrics."""
+    """Parse the custom report to extract metrics."""
     try:
+        print(f"DEBUG: Parsing report from {report_path}")
         with open(report_path, 'r') as f:
             content = f.read()
+            print(f"DEBUG: Report content:\n{content}")
 
         # Initialize metrics dictionary
         metrics = {}
 
-        # Extract key metrics using regular expressions
+        # Extract raw values using regular expressions
         import re
 
-        # Extract executions/sec difference
-        execs_match = re.search(r'Total executions/sec:.*?Diff=([-\d.]+)%', content)
-        metrics['execs_diff'] = float(execs_match.group(1)) if execs_match else 0.0
-
-        # Extract paths found difference
-        paths_match = re.search(r'Total paths found:.*?Diff=([-\d.]+)%', content)
-        metrics['paths_diff'] = float(paths_match.group(1)) if paths_match else 0.0
-
-        # Extract crashes found difference
-        crashes_match = re.search(r'Total crashes found:.*?Diff=([-\d.]+)%', content)
-        metrics['crashes_diff'] = float(crashes_match.group(1)) if crashes_match else 0.0
-
-        # Extract edges found difference
-        edges_match = re.search(r'Total edges found:.*?Diff=([-\d.]+)%', content)
-        metrics['edges_diff'] = float(edges_match.group(1)) if edges_match else 0.0
-
-        # Extract bitmap coverage difference (in percentage points)
-        bitmap_match = re.search(r'Average bitmap coverage:.*?Diff=([-\d.]+)pp', content)
-        metrics['bitmap_diff'] = float(bitmap_match.group(1)) if bitmap_match else 0.0
-
-        # Extract raw values too
+        # Extract executions/sec
         custom_execs_match = re.search(r'Total executions/sec: Custom=([\d.]+)', content)
-        metrics['custom_execs'] = float(custom_execs_match.group(1)) if custom_execs_match else 0.0
+        if custom_execs_match:
+            metrics['custom_execs'] = float(custom_execs_match.group(1))
+            print(f"DEBUG: Found custom_execs = {metrics['custom_execs']}")
+        else:
+            print("DEBUG: Failed to match custom_execs pattern")
+            metrics['custom_execs'] = 0.0
 
-        cfs_execs_match = re.search(r'Total executions/sec:.*?EEVDF=([\d.]+)', content)
-        metrics['cfs_execs'] = float(cfs_execs_match.group(1)) if cfs_execs_match else 0.0
-
+        # Extract paths found
         custom_paths_match = re.search(r'Total paths found: Custom=(\d+)', content)
-        metrics['custom_paths'] = int(custom_paths_match.group(1)) if custom_paths_match else 0
+        if custom_paths_match:
+            metrics['custom_paths'] = int(custom_paths_match.group(1))
+            print(f"DEBUG: Found custom_paths = {metrics['custom_paths']}")
+        else:
+            print("DEBUG: Failed to match custom_paths pattern")
+            metrics['custom_paths'] = 0
 
-        cfs_paths_match = re.search(r'Total paths found:.*?EEVDF=(\d+)', content)
-        metrics['cfs_paths'] = int(cfs_paths_match.group(1)) if cfs_paths_match else 0
-
+        # Extract crashes found
         custom_crashes_match = re.search(r'Total crashes found: Custom=(\d+)', content)
-        metrics['custom_crashes'] = int(custom_crashes_match.group(1)) if custom_crashes_match else 0
+        if custom_crashes_match:
+            metrics['custom_crashes'] = int(custom_crashes_match.group(1))
+            print(f"DEBUG: Found custom_crashes = {metrics['custom_crashes']}")
+        else:
+            print("DEBUG: Failed to match custom_crashes pattern")
+            metrics['custom_crashes'] = 0
 
-        cfs_crashes_match = re.search(r'Total crashes found:.*?EEVDF=(\d+)', content)
-        metrics['cfs_crashes'] = int(cfs_crashes_match.group(1)) if cfs_crashes_match else 0
-
+        # Extract edges found
         custom_edges_match = re.search(r'Total edges found: Custom=(\d+)', content)
-        metrics['custom_edges'] = int(custom_edges_match.group(1)) if custom_edges_match else 0
+        if custom_edges_match:
+            metrics['custom_edges'] = int(custom_edges_match.group(1))
+            print(f"DEBUG: Found custom_edges = {metrics['custom_edges']}")
+        else:
+            print("DEBUG: Failed to match custom_edges pattern")
+            metrics['custom_edges'] = 0
 
-        cfs_edges_match = re.search(r'Total edges found:.*?EEVDF=(\d+)', content)
-        metrics['cfs_edges'] = int(cfs_edges_match.group(1)) if cfs_edges_match else 0
-
+        # Extract bitmap coverage
         custom_bitmap_match = re.search(r'Average bitmap coverage: Custom=([\d.]+)%', content)
-        metrics['custom_bitmap'] = float(custom_bitmap_match.group(1)) if custom_bitmap_match else 0.0
+        if custom_bitmap_match:
+            metrics['custom_bitmap'] = float(custom_bitmap_match.group(1))
+            print(f"DEBUG: Found custom_bitmap = {metrics['custom_bitmap']}")
+        else:
+            print("DEBUG: Failed to match custom_bitmap pattern")
+            metrics['custom_bitmap'] = 0.0
 
-        cfs_bitmap_match = re.search(r'Average bitmap coverage:.*?EEVDF=([\d.]+)%', content)
-        metrics['cfs_bitmap'] = float(cfs_bitmap_match.group(1)) if cfs_bitmap_match else 0.0
+        # Set difference metrics to 0 since we're not comparing anymore
+        metrics['execs_diff'] = 0.0
+        metrics['paths_diff'] = 0.0
+        metrics['crashes_diff'] = 0.0
+        metrics['edges_diff'] = 0.0
+        metrics['bitmap_diff'] = 0.0
+        
+        # Set CFS metrics to 0 since we're not running CFS
+        metrics['cfs_execs'] = 0.0
+        metrics['cfs_paths'] = 0
+        metrics['cfs_crashes'] = 0
+        metrics['cfs_edges'] = 0
+        metrics['cfs_bitmap'] = 0.0
 
+        print(f"DEBUG: Final parsed metrics: {metrics}")
         return metrics
     except Exception as e:
-        logger.error(f"Error parsing comparison report: {e}")
+        logger.error(f"Error parsing custom report: {e}")
+        print(f"DEBUG: Exception while parsing report: {e}")
         return {
             'execs_diff': 0.0, 'paths_diff': 0.0, 'crashes_diff': 0.0,
             'edges_diff': 0.0, 'bitmap_diff': 0.0,
@@ -311,12 +323,21 @@ def calculate_score(metrics, weights=None, means=None):
     if means is None:
         means = METRIC_MEANS
 
+    print(f"DEBUG: Calculating score with metrics: {metrics}")
+    print(f"DEBUG: Using weights: {weights}")
+    print(f"DEBUG: Using means: {means}")
+
     score = 0.0
     for metric in weights:
         if metric in metrics and metric in means and means[metric] != 0:
             normalized_value = metrics[metric] / means[metric]
-            score += normalized_value * weights[metric]
+            contribution = normalized_value * weights[metric]
+            score += contribution
+            print(f"DEBUG: Metric {metric} = {metrics[metric]}, normalized = {normalized_value}, contribution = {contribution}")
+        else:
+            print(f"DEBUG: Skipping metric {metric} - not in metrics or means, or mean is 0")
 
+    print(f"DEBUG: Final score: {score}")
     return score
 
 
@@ -331,6 +352,11 @@ def save_trial_results(trial_num, params, metrics, score, all_metrics=None, all_
         all_metrics: List of metrics for each replication (optional)
         all_scores: List of scores for each replication (optional)
     """
+    print(f"DEBUG: Saving trial {trial_num} results")
+    print(f"DEBUG: Params: {params}")
+    print(f"DEBUG: Metrics: {metrics}")
+    print(f"DEBUG: Score: {score}")
+    
     # Convert any NumPy types to native Python types for JSON serialization
     serializable_params = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v
                           for k, v in params.items()}
@@ -374,34 +400,17 @@ def save_trial_results(trial_num, params, metrics, score, all_metrics=None, all_
     update_trials_csv(trial_num, params, metrics, score, all_scores)
 
 def update_trials_csv(trial_num, params, metrics, score, all_scores=None):
-    """Update the CSV file with all trials.
-
-    Args:
-        trial_num: Trial number
-        params: Parameter values
-        metrics: Average metrics across replications
-        score: Average score across replications
-        all_scores: List of scores for each replication (optional)
-    """
+    """Update the CSV file with all trials."""
+    print(f"DEBUG: Updating CSV for trial {trial_num}")
+    print(f"DEBUG: Row data: trial={trial_num}, score={score}, metrics={metrics}")
+    
     # Create a row for this trial
     row = {
         'trial': trial_num,
         'score': score,
         'timestamp': datetime.now().isoformat()
     }
-
-    # Add replication statistics if available
-    if all_scores and len(all_scores) > 1:
-        row['score_std'] = np.std(all_scores)
-        row['score_min'] = min(all_scores)
-        row['score_max'] = max(all_scores)
-        row['replications'] = len(all_scores)
-    else:
-        row['score_std'] = 0.0
-        row['score_min'] = score
-        row['score_max'] = score
-        row['replications'] = 1 if all_scores else 1
-
+    
     # Add parameters
     for param, value in params.items():
         row[param] = value
@@ -409,7 +418,9 @@ def update_trials_csv(trial_num, params, metrics, score, all_scores=None):
     # Add metrics
     for metric, value in metrics.items():
         row[metric] = value
-
+        
+    print(f"DEBUG: Final row data: {row}")
+    
     # Create or update the CSV file
     csv_path = os.path.join(RESULTS_DIR, "all_trials.csv")
 
@@ -666,13 +677,21 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
     """Main function to run the optimization.
 
     Args:
-        n_trials: Total number of trials to run
+        n_trials: Total number of trials to run (including initial samples)
         duration: Duration of each benchmark in minutes
         initial_samples: Number of initial random samples
         replications: Number of replications for each parameter combination
     """
-    logger.info(f"Starting Gaussian Process optimization with {n_trials} trials, {duration} minutes per benchmark")
-    logger.info(f"Using {replications} replications for each parameter combination")
+    # Ensure initial_samples doesn't exceed n_trials
+    if initial_samples > n_trials:
+        logger.warning(f"initial_samples ({initial_samples}) exceeds n_trials ({n_trials}). Setting initial_samples to {n_trials}")
+        initial_samples = n_trials
+    
+    # Calculate the number of optimization trials
+    optimization_trials = n_trials - initial_samples
+    
+    logger.info(f"Starting Gaussian Process optimization with {n_trials} total trials ({initial_samples} initial + {optimization_trials} optimization)")
+    logger.info(f"Each benchmark will run for {duration} minutes with {replications} replications")
     logger.info(f"Results will be saved to {RESULTS_DIR}")
 
     # Save configuration

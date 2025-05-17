@@ -108,7 +108,7 @@ run_benchmark() {
         --args "$TARGET_ARGS" \
         --memory-limit "$MEMORY_LIMIT" \
         --timeout "$TIMEOUT" \
-        --scheduler-order "custom_first" \
+        --scheduler-order "$SCHEDULER_ORDER" \
         --boost-duration "$boost_duration" \
         --boost-weight "$boost_weight" \
         --boost-decay "$boost_decay" \
@@ -116,8 +116,8 @@ run_benchmark() {
         --min-slice "$slice_min_us" \
         --results-dir "$results_dir"
 
-    # Copy the custom report to our test directory
-    cp enhanced_simple_benchmark_latest.txt "$results_dir/custom_report.txt"
+    # Copy the comparison report to our test directory
+    cp enhanced_simple_benchmark_latest.txt "$results_dir/comparison_report.txt"
 
     echo "Benchmark completed. Results in $results_dir/"
     echo ""

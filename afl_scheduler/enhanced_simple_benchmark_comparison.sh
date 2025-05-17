@@ -319,16 +319,21 @@ run_benchmark() {
 }
 
 # Run benchmarks based on scheduler order
-run_benchmark "custom"
+if [ "$SCHEDULER_ORDER" = "custom_first" ]; then
+    run_benchmark "custom"
+    run_benchmark "EEVDF"
+else
+    run_benchmark "EEVDF"
+    run_benchmark "custom"
+fi
 
-# Generate a simplified report instead of comparison
-echo "Generating custom scheduler report..."
-# Replace the comparison report generation with a simple stats extraction
-python3 /home/ernesto/Documents/AFLplusplus/afl_scheduler/extract_custom_stats.py "$RESULTS_DIR/custom" > "$RESULTS_DIR/custom_report.txt"
+# Generate comparison report
+echo "Generating comparison report..."
+python3 /home/ernesto/Documents/AFLplusplus/afl_scheduler/compare_results.py "$RESULTS_DIR/custom" "$RESULTS_DIR/EEVDF" "$STATS_DIR" > "$RESULTS_DIR/comparison_report.txt"
 
 echo "Benchmark completed. Results in $RESULTS_DIR/"
-echo "Custom report: $RESULTS_DIR/custom_report.txt"
+echo "Comparison report: $RESULTS_DIR/comparison_report.txt"
 
-# Copy report to a more accessible location
-cp "$RESULTS_DIR/custom_report.txt" "enhanced_simple_benchmark_latest.txt"
-echo "Latest report also available at: enhanced_simple_benchmark_latest.txt"
+# Copy comparison report to a more accessible location
+cp "$RESULTS_DIR/comparison_report.txt" "enhanced_simple_benchmark_latest.txt"
+echo "Latest comparison report also available at: enhanced_simple_benchmark_latest.txt"
