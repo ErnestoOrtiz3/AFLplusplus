@@ -674,41 +674,22 @@ s32 BPF_STRUCT_OPS(afl_sched_dispatch, s32 cpu, struct task_struct *prev)
 SEC("uretprobe/save_if_interesting:function")
 int trace_save_if_interesting_ret(struct pt_regs *ctx)
 {
-    struct discovery_event event = {};
-
     // Get the return value (1 if saved, 0 if not)
     u8 ret = PT_REGS_RC(ctx);
 
-    // Get the current PID
-    u32 pid = bpf_get_current_pid_tgid() >> 32;
-    event.pid = pid;
-
-    // Get current timestamp (in nanoseconds)
-    u64 now_ns = bpf_ktime_get_ns();
-    event.timestamp = now_ns;
-
-    // For now, we don't know the discovery type (will be determined in user-space)
-    // We'll use the monitoring daemon to check if it's a path or crash
-    event.discovery_type = 0;
-
-    // Store the return value
-    event.saved = ret;
-
     // Only process actual discoveries (when something was saved)
-    if (event.saved) {
-        // DIRECT BOOST: Update the boost map directly from BPF
-        // Convert nanoseconds to microseconds for consistency with other time values
-        u64 now_us = now_ns / 1000;
+    if (ret) {
+        // Get the current PID
+        u32 pid = bpf_get_current_pid_tgid() >> 32;
+        
+        // Get current timestamp and convert to microseconds
+        u64 now_us = bpf_ktime_get_ns() / 1000;
 
         // Calculate boost until timestamp
         u64 boost_until = now_us + prio_boost_duration_us;
 
         // Update the boost map directly
         bpf_map_update_elem(&afl_boost_until, &pid, &boost_until, BPF_ANY);
-
-        // Send the event to user-space via perf event (for monitoring only)
-        bpf_perf_event_output(ctx, &discovery_events, BPF_F_CURRENT_CPU,
-                             &event, sizeof(event));
     }
 
     return 0;
