@@ -13,10 +13,13 @@
 #include <time.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <dirent.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <fcntl.h>
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 #include <linux/perf_event.h>
@@ -78,6 +81,7 @@ static void cleanup(void);
 static void print_usage(const char *prog_name);
 static void handle_event(void *ctx, int cpu, void *data, unsigned int data_sz);
 static void handle_lost_events(void *ctx, int cpu, unsigned long long lost);
+static int scan_for_afl_processes(int *pids, int max_pids);
 
 int main(int argc, char *argv[]) {
     int err;
@@ -226,98 +230,149 @@ int main(int argc, char *argv[]) {
     // Wait for signal to exit
     printf("Press Ctrl+C to unload the scheduler\n");
 
-    // Flag to track if we've attached the uretprobe
-    bool uretprobe_attached = false;
+    // Track which PIDs we've already attached to
+    int attached_pids[1000] = {0};
+    int attached_pid_count = 0;
+    bool uretprobe_attached = false;  // Set to true when we've attached to at least one process
 
     while (running) {
-        // Poll for events with a timeout of 100ms
-        err = perf_buffer__poll(pb, 100);
+        // Poll for events with a shorter timeout (10ms) for more responsive detection
+        // This makes the detection loop run more frequently
+        err = perf_buffer__poll(pb, 10);
         if (err < 0 && err != -EINTR) {
             fprintf(stderr, "Error polling perf buffer: %s\n", strerror(-err));
             break;
         }
 
         // Check if AFL++ is running and attach uretprobe if needed
-        // Only check every 5 seconds to avoid excessive checking
+        // Check frequently (every 1 second) for faster detection
         static time_t last_check_time = 0;
+        static time_t first_detection_time = 0;
+        static bool detection_in_progress = false;
         time_t current_time = time(NULL);
 
-        if (!uretprobe_attached && (current_time - last_check_time >= 5)) {
+        // Always check for new AFL++ instances, but at different intervals
+        // - If we haven't attached to any processes yet, check very frequently
+        // - If we've already attached to some processes, check less frequently
+        int check_interval = uretprobe_attached ? 2 : 0;  // 0 = every poll, 2 = every 2 seconds
+
+        if (current_time - last_check_time >= check_interval) {
             last_check_time = current_time;
+
+            // If this is our first detection attempt, print a message
+            if (!detection_in_progress) {
+                printf("👀 Actively scanning for AFL++ processes...\n");
+                detection_in_progress = true;
+                first_detection_time = current_time;
+            }
             // Check if AFL++ binary exists
             if (access(AFL_FUZZ_PATH, F_OK) == 0) {
-                // Check if any AFL++ processes are running
-                FILE *fp;
-                char cmd[256];
-                snprintf(cmd, sizeof(cmd), "pgrep -f afl-fuzz");
-                fp = popen(cmd, "r");
-                if (fp) {
-                    char line[256];
-                    if (fgets(line, sizeof(line), fp) && atoi(line) > 0) {
-                        // AFL++ is running, try to attach uretprobe
-                        printf("Detected AFL++ running (PID %d), attaching uretprobe...\n", atoi(line));
+                // Use our direct /proc scanning function - much faster than pgrep
+                int pids[100] = {0};  // Store up to 100 PIDs
+                int pid_count = scan_for_afl_processes(pids, 100);
 
-                        // Find the offset of save_if_interesting function
-                        FILE *nm_fp;
-                        char nm_cmd[256];
-                        char nm_line[256];
-                        unsigned long offset = 0;
+                // If we found any AFL++ processes
+                if (pid_count > 0) {
+                    printf("\n⚡ Detected %d AFL++ processes, attaching uretprobe...\n", pid_count);
 
-                        // Use nm to find the symbol offset
-                        snprintf(nm_cmd, sizeof(nm_cmd), "nm -D %s | grep save_if_interesting", AFL_FUZZ_PATH);
-                        nm_fp = popen(nm_cmd, "r");
-                        if (nm_fp) {
-                            if (fgets(nm_line, sizeof(nm_line), nm_fp)) {
-                                // Parse the output (format: "address T symbol")
-                                offset = strtoul(nm_line, NULL, 16);
-                                printf("Found save_if_interesting at offset 0x%lx\n", offset);
+                    // Print all detected PIDs
+                    printf("📊 Detected PIDs: ");
+                    for (int i = 0; i < pid_count; i++) {
+                        printf("%d ", pids[i]);
+                    }
+                    printf("\n");
+
+                    // Calculate detection time
+                    if (first_detection_time > 0) {
+                        printf("⏱️  Detection time: %ld seconds after startup\n",
+                               current_time - first_detection_time);
+                    }
+
+                    // Find the offset of save_if_interesting function
+                    FILE *nm_fp;
+                    char nm_cmd[256];
+                    char nm_line[256];
+                    unsigned long offset = 0;
+
+                    // Use nm to find the symbol offset
+                    snprintf(nm_cmd, sizeof(nm_cmd), "nm -D %s | grep save_if_interesting", AFL_FUZZ_PATH);
+                    nm_fp = popen(nm_cmd, "r");
+                    if (nm_fp) {
+                        if (fgets(nm_line, sizeof(nm_line), nm_fp)) {
+                            // Parse the output (format: "address T symbol")
+                            offset = strtoul(nm_line, NULL, 16);
+                            printf("Found save_if_interesting at offset 0x%lx\n", offset);
+                        }
+                        pclose(nm_fp);
+                    }
+
+                    if (offset > 0) {
+                        // Now attach to each PID individually
+                        int newly_attached = 0;
+
+                        for (int i = 0; i < pid_count; i++) {
+                            int pid = pids[i];
+
+                            // Check if we've already attached to this PID
+                            bool already_attached = false;
+                            for (int j = 0; j < attached_pid_count; j++) {
+                                if (attached_pids[j] == pid) {
+                                    already_attached = true;
+                                    break;
+                                }
                             }
-                            pclose(nm_fp);
+
+                            if (!already_attached) {
+                                // Attach uretprobe to this specific PID
+                                struct bpf_link *link =
+                                    bpf_program__attach_uprobe(skel->progs.trace_save_if_interesting_ret,
+                                                             true, /* this is a return probe */
+                                                             pid, /* specific PID */
+                                                             AFL_FUZZ_PATH,
+                                                             offset);
+
+                                if (link) {
+                                    // Store the link so we can detach it later if needed
+                                    // For simplicity, we're not storing the links in this example
+
+                                    // Add to our list of attached PIDs
+                                    if (attached_pid_count < 1000) {
+                                        attached_pids[attached_pid_count++] = pid;
+                                    }
+
+                                    printf("✅ Successfully attached to PID %d\n", pid);
+                                    newly_attached++;
+
+                                    // Set the flag to indicate we've attached to at least one process
+                                    uretprobe_attached = true;
+                                } else {
+                                    fprintf(stderr, "❌ Failed to attach to PID %d: %s\n",
+                                            pid, strerror(errno));
+                                }
+                            } else {
+                                printf("ℹ️ Already attached to PID %d, skipping\n", pid);
+                            }
                         }
 
-                        if (offset > 0) {
-                            // Count how many AFL++ instances are running
-                            int afl_instance_count = 0;
-                            FILE *count_fp;
-                            char count_cmd[256];
-                            snprintf(count_cmd, sizeof(count_cmd), "pgrep -f afl-fuzz | wc -l");
-                            count_fp = popen(count_cmd, "r");
-                            if (count_fp) {
-                                char count_line[256];
-                                if (fgets(count_line, sizeof(count_line), count_fp)) {
-                                    afl_instance_count = atoi(count_line);
-                                }
-                                pclose(count_fp);
-                            }
+                        printf("📊 Summary: Attached to %d new processes (%d total)\n",
+                               newly_attached, attached_pid_count);
 
-                            printf("Detected %d AFL++ instances running\n", afl_instance_count);
-
-                            // Attach uretprobe to save_if_interesting function in ALL instances
-                            // Using -1 as PID means it will attach to all processes using this binary
-                            skel->links.trace_save_if_interesting_ret =
-                                bpf_program__attach_uprobe(skel->progs.trace_save_if_interesting_ret,
-                                                         true, /* this is a return probe */
-                                                         -1, /* attach to all processes using this binary */
-                                                         AFL_FUZZ_PATH,
-                                                         offset);
-
-                            if (skel->links.trace_save_if_interesting_ret) {
-                                printf("\n========== URETPROBE ATTACHED SUCCESSFULLY ==========\n");
-                                printf("✅ Attached uretprobe to save_if_interesting in all AFL++ instances\n");
-                                printf("✅ Function offset: 0x%lx in %s\n", offset, AFL_FUZZ_PATH);
-                                printf("✅ Monitoring %d AFL++ instances\n", afl_instance_count);
-                                printf("✅ This will also apply to any new AFL++ instances that start later\n");
-                                printf("✅ Direct BPF boosting is now active\n");
-                                printf("========================================================\n\n");
-                                uretprobe_attached = true;
-                            } else {
-                                fprintf(stderr, "\n❌ ERROR: Failed to attach uretprobe: %s\n", strerror(errno));
-                                fprintf(stderr, "❌ Function offset: 0x%lx in %s\n", offset, AFL_FUZZ_PATH);
-                                fprintf(stderr, "❌ Will retry in 5 seconds...\n\n");
-                            }
+                        if (newly_attached > 0) {
+                            printf("\n========== URETPROBE ATTACHMENT SUMMARY ==========\n");
+                            printf("✅ Function offset: 0x%lx in %s\n", offset, AFL_FUZZ_PATH);
+                            printf("✅ Successfully attached to %d new AFL++ instances\n", newly_attached);
+                            printf("✅ Total monitored instances: %d\n", attached_pid_count);
+                            printf("✅ Direct BPF boosting is active for all monitored instances\n");
+                            printf("✅ Will continue scanning for new AFL++ instances\n");
+                            printf("==================================================\n\n");
+                        } else if (pid_count > 0 && newly_attached == 0) {
+                            printf("\n========== NO NEW ATTACHMENTS NEEDED ==========\n");
+                            printf("ℹ️ All detected AFL++ instances are already being monitored\n");
+                            printf("ℹ️ Total monitored instances: %d\n", attached_pid_count);
+                            printf("ℹ️ Will continue scanning for new AFL++ instances\n");
+                            printf("==============================================\n\n");
                         }
                     }
-                    pclose(fp);
                 }
             }
         }
@@ -384,7 +439,80 @@ static void handle_signal(int sig) {
     running = 0;
 }
 
-// Function removed - no longer needed since boost is applied directly in BPF
+// Function to scan /proc for AFL++ processes
+static int scan_for_afl_processes(int *pids, int max_pids) {
+    DIR *proc_dir;
+    struct dirent *entry;
+    int pid_count = 0;
+    char cmdline_path[512];
+    char cmdline[1024];
+    int fd;
+    ssize_t bytes_read;
+
+    // Open /proc directory
+    proc_dir = opendir("/proc");
+    if (!proc_dir) {
+        perror("Failed to open /proc");
+        return 0;
+    }
+
+    // Iterate through all entries in /proc
+    while ((entry = readdir(proc_dir)) != NULL && pid_count < max_pids) {
+        // Skip non-numeric entries (not PIDs)
+        if (!isdigit(entry->d_name[0])) {
+            continue;
+        }
+
+        // Construct path to cmdline file
+        snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%s/cmdline", entry->d_name);
+
+        // Open cmdline file
+        fd = open(cmdline_path, O_RDONLY);
+        if (fd == -1) {
+            // Process might have terminated, skip
+            continue;
+        }
+
+        // Read cmdline
+        bytes_read = read(fd, cmdline, sizeof(cmdline) - 1);
+        close(fd);
+
+        if (bytes_read <= 0) {
+            // Empty cmdline or error, skip
+            continue;
+        }
+
+        // Ensure null termination
+        cmdline[bytes_read] = '\0';
+
+        // Check if this is an afl-fuzz process
+        // First, extract the executable name (first part of cmdline)
+        char *executable = cmdline;
+
+        // Find the last slash to get just the executable name
+        char *last_slash = strrchr(executable, '/');
+        if (last_slash) {
+            executable = last_slash + 1;
+        }
+
+        // Check if it's afl-fuzz
+        if (executable[0] == 'a' &&
+            executable[1] == 'f' &&
+            executable[2] == 'l' &&
+            executable[3] == '-' &&
+            executable[4] == 'f' &&
+            executable[5] == 'u' &&
+            executable[6] == 'z' &&
+            executable[7] == 'z') {
+
+            // Found an AFL++ process, add its PID to the array
+            pids[pid_count++] = atoi(entry->d_name);
+        }
+    }
+
+    closedir(proc_dir);
+    return pid_count;
+}
 
 // Clean up resources
 static void cleanup(void) {

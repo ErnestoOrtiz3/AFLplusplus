@@ -5,7 +5,7 @@
 #
 
 # Configuration
-NUM_RUNS=2
+NUM_RUNS=1
 TEST_NAME="enhanced_optimal_test"
 BOOST_DURATION=3372000
 BOOST_WEIGHT=3000

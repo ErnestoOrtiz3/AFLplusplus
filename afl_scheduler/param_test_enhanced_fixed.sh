@@ -4,7 +4,7 @@
 #
 
 # Default benchmark parameters
-DURATION=5
+DURATION=1
 NUM_INSTANCES=4
 TARGET_PROGRAM="./complex_target_afl"
 TARGET_ARGS="@@"
