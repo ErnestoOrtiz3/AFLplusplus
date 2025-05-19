@@ -45,7 +45,7 @@ run_single_test() {
     echo "Started at: $(date)"
 
     # Run the test
-    ./afl_scheduler/param_test_enhanced_fixed.sh custom "$run_name" "$BOOST_DURATION" "$BOOST_WEIGHT" "$BOOST_DECAY" "$SLICE_US" "$SLICE_MIN_US"
+    ./afl_scheduler/param_test_enhanced_comp.sh custom "$run_name" "$BOOST_DURATION" "$BOOST_WEIGHT" "$BOOST_DECAY" "$SLICE_US" "$SLICE_MIN_US"
 
     # Find the results directory for this run
     local results_dir=""

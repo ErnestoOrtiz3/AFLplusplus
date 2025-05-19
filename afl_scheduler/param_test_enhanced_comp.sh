@@ -101,7 +101,7 @@ run_benchmark() {
     echo "Minimum time slice: $slice_min_us us" >> "$results_dir/parameters.txt"
 
     # Run the benchmark with these parameters
-    sudo /home/ernesto/Documents/AFLplusplus/afl_scheduler/enhanced_simple_benchmark_fixed.sh \
+    sudo /home/ernesto/Documents/AFLplusplus/afl_scheduler/benchmark_comparison.sh \
         --duration "$DURATION" \
         --num-instances "$NUM_INSTANCES" \
         --target "$TARGET_PROGRAM" \
