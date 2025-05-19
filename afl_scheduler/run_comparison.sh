@@ -24,6 +24,22 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESULTS_DIR="multiple_test_results_${TIMESTAMP}"
 mkdir -p "$RESULTS_DIR"
 
+# Create temporary directory for fuzzing
+TMP_FUZZING_DIR=$(mktemp -d -p /tmp afl_multiple_runs_XXXXXX)
+if [ ! -d "$TMP_FUZZING_DIR" ]; then
+    echo "Error: Failed to create temporary directory"
+    exit 1
+fi
+
+# Cleanup function to remove temporary files
+cleanup_tmp() {
+    echo "Cleaning up temporary directory: $TMP_FUZZING_DIR"
+    rm -rf "$TMP_FUZZING_DIR"
+}
+
+# Register cleanup function to run on exit
+trap cleanup_tmp EXIT
+
 # Save test configuration
 echo "Test Configuration:" > "$RESULTS_DIR/config.txt"
 echo "Test name: $TEST_NAME" >> "$RESULTS_DIR/config.txt"
@@ -39,38 +55,26 @@ echo "Started at: $(date)" >> "$RESULTS_DIR/config.txt"
 run_single_test() {
     local run_number=$1
     local run_name="${TEST_NAME}${run_number}"
+    local tmp_run_dir="$TMP_FUZZING_DIR/$run_name"
+    local final_run_dir="$RESULTS_DIR/run_$run_number"
+    
+    mkdir -p "$final_run_dir"
 
     echo "=== Starting run $run_number of $NUM_RUNS ==="
     echo "Run name: $run_name"
     echo "Started at: $(date)"
 
-    # Run the test
-    ./afl_scheduler/param_test_enhanced_comp.sh custom "$run_name" "$BOOST_DURATION" "$BOOST_WEIGHT" "$BOOST_DECAY" "$SLICE_US" "$SLICE_MIN_US"
+    # Run the test with temporary directory and final results directory
+    ./afl_scheduler/param_test_enhanced_comp.sh custom "$run_name" "$BOOST_DURATION" "$BOOST_WEIGHT" "$BOOST_DECAY" "$SLICE_US" "$SLICE_MIN_US" "$tmp_run_dir" "$final_run_dir"
 
-    # Find the results directory for this run
-    local results_dir=""
-
-    # First check if the directory exists directly (new method)
-    if [ -d "$run_name" ]; then
-        results_dir="$run_name"
-    else
-        # Fall back to old method
-        results_dir=$(find enhanced_param_tests_* -type d -name "$run_name" | sort -r | head -n 1)
-    fi
-
-    if [ -n "$results_dir" ]; then
-        # Copy the comparison report to our results directory
-        mkdir -p "$RESULTS_DIR/run_$run_number"
-        cp "$results_dir/comparison_report.txt" "$RESULTS_DIR/run_$run_number/"
-
-        # Extract key metrics for summary
+    # Extract key metrics for summary
+    if [ -f "$final_run_dir/comparison_report.txt" ]; then
         echo "Run $run_number results:" >> "$RESULTS_DIR/summary.txt"
-        grep -A 6 "Overall Performance" "$results_dir/comparison_report.txt" >> "$RESULTS_DIR/summary.txt"
+        grep -A 6 "Overall Performance" "$final_run_dir/comparison_report.txt" >> "$RESULTS_DIR/summary.txt"
         echo "" >> "$RESULTS_DIR/summary.txt"
-
-        echo "Results saved to $RESULTS_DIR/run_$run_number/"
+        echo "Results saved to $final_run_dir/"
     else
-        echo "Warning: Could not find results directory for run $run_number"
+        echo "Warning: Could not find comparison report for run $run_number"
         echo "Run $run_number: No results found" >> "$RESULTS_DIR/summary.txt"
         echo "" >> "$RESULTS_DIR/summary.txt"
     fi

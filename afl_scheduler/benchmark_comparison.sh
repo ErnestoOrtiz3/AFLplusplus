@@ -12,6 +12,7 @@ MEMORY_LIMIT="none"
 TIMEOUT="7500+"
 SCHEDULER_ORDER="custom_first"
 CUSTOM_RESULTS_DIR=""   # Optional custom results directory
+FINAL_RESULTS_DIR=""    # Final destination for essential results
 
 # Default scheduler parameters
 BOOST_DURATION=3372000
@@ -75,6 +76,10 @@ while [[ $# -gt 0 ]]; do
       CUSTOM_RESULTS_DIR="$2"
       shift 2
       ;;
+    --final-results-dir)
+      FINAL_RESULTS_DIR="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [options]"
       echo ""
@@ -94,6 +99,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --slice MICROSECONDS         Time slice in microseconds (default: $SLICE_US)"
       echo "  --min-slice MICROSECONDS     Minimum time slice in microseconds (default: $SLICE_MIN_US)"
       echo "  --results-dir DIR            Custom results directory (default: auto-generated)"
+      echo "  --final-results-dir DIR      Final destination for essential results"
       echo ""
       echo "Power scheduling:"
       echo "  The script automatically distributes power schedules based on the number of instances:"
@@ -120,10 +126,13 @@ done
 if [ -z "$CUSTOM_RESULTS_DIR" ]; then
     # No custom directory provided, create our own
     TEST_ID="enhanced_simple_$(date +%Y%m%d_%H%M%S)"
-    RESULTS_DIR="enhanced_simple_benchmark_results/${TEST_ID}"
+    TMP_DIR=$(mktemp -d -p /tmp afl_benchmark_comp_XXXXXX)
+    RESULTS_DIR="$TMP_DIR/$TEST_ID"
+    CREATED_TMP_DIR=true
 else
     # Use the provided custom directory
     RESULTS_DIR="$CUSTOM_RESULTS_DIR"
+    CREATED_TMP_DIR=false
 fi
 
 STATS_DIR="$RESULTS_DIR/stats"
@@ -132,6 +141,17 @@ STATS_DIR="$RESULTS_DIR/stats"
 mkdir -p "$RESULTS_DIR"
 mkdir -p "$STATS_DIR/custom"
 mkdir -p "$STATS_DIR/EEVDF"
+
+# Cleanup function to remove temporary files
+cleanup_tmp() {
+    if [ "$CREATED_TMP_DIR" = true ] && [ -d "$TMP_DIR" ]; then
+        echo "Cleaning up temporary directory: $TMP_DIR"
+        rm -rf "$TMP_DIR"
+    fi
+}
+
+# Register cleanup function to run on exit
+trap cleanup_tmp EXIT
 
 # Save test parameters
 if [ -z "$CUSTOM_RESULTS_DIR" ]; then
@@ -286,7 +306,7 @@ run_benchmark() {
         POWER_SCHEDULE=$(assign_power_schedule "$i" "$NUM_INSTANCES")
 
         # Start AFL++ instance
-        sudo AFL_NO_AFFINITY=1 /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/original_seeds -o "$output_dir" \
+        sudo AFL_NO_AFFINITY=1 AFL_TMPDIR="$TMP_DIR" /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/original_seeds -o "$output_dir" \
             $AFL_MODE "fuzzer$i" -t "$TIMEOUT" -m "$MEMORY_LIMIT" $POWER_SCHEDULE \
             -- "$TARGET_PROGRAM" "$TARGET_ARGS" &
 
@@ -337,3 +357,13 @@ echo "Comparison report: $RESULTS_DIR/comparison_report.txt"
 # Copy comparison report to a more accessible location
 cp "$RESULTS_DIR/comparison_report.txt" "enhanced_simple_benchmark_latest.txt"
 echo "Latest comparison report also available at: enhanced_simple_benchmark_latest.txt"
+
+# If a final results directory was specified, copy essential files there
+if [ -n "$FINAL_RESULTS_DIR" ]; then
+    echo "Copying essential results to final destination: $FINAL_RESULTS_DIR"
+    mkdir -p "$FINAL_RESULTS_DIR"
+    
+    # Copy only essential files
+    cp "$RESULTS_DIR/comparison_report.txt" "$FINAL_RESULTS_DIR/comparison_report.txt"
+    cp "$RESULTS_DIR/parameters.txt" "$FINAL_RESULTS_DIR/parameters.txt"
+fi

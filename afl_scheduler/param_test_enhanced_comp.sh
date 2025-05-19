@@ -16,6 +16,22 @@ SCHEDULER_ORDER="custom_first"
 BASE_RESULTS_DIR="enhanced_param_tests_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BASE_RESULTS_DIR"
 
+# Create temporary directory for fuzzing
+TMP_FUZZING_DIR=$(mktemp -d -p /tmp afl_fuzzing_comp_XXXXXX)
+if [ ! -d "$TMP_FUZZING_DIR" ]; then
+    echo "Error: Failed to create temporary directory"
+    exit 1
+fi
+
+# Cleanup function to remove temporary files
+cleanup_tmp() {
+    echo "Cleaning up temporary directory: $TMP_FUZZING_DIR"
+    rm -rf "$TMP_FUZZING_DIR"
+}
+
+# Register cleanup function to run on exit
+trap cleanup_tmp EXIT
+
 # Function to assign power schedule based on instance number and total count
 assign_power_schedule() {
     local instance_num=$1
@@ -79,6 +95,8 @@ run_benchmark() {
     local boost_decay="$4"
     local slice_us="$5"
     local slice_min_us="$6"
+    local custom_tmp_dir="$7"
+    local custom_final_dir="$8"
 
     echo "=== Running benchmark: $test_name ==="
     echo "Parameters:"
@@ -89,16 +107,29 @@ run_benchmark() {
     echo "  Minimum time slice: $slice_min_us us"
 
     # Create a unique results directory for this test
-    local results_dir="$BASE_RESULTS_DIR/$test_name"
+    local tmp_results_dir
+    local final_results_dir
+    
+    if [ -n "$custom_tmp_dir" ]; then
+        tmp_results_dir="$custom_tmp_dir"
+    else
+        tmp_results_dir="$TMP_FUZZING_DIR/$test_name"
+    fi
+    
+    if [ -n "$custom_final_dir" ]; then
+        final_results_dir="$custom_final_dir"
+    else
+        final_results_dir="$BASE_RESULTS_DIR/$test_name"
+    fi
 
     # Save parameter information
-    mkdir -p "$results_dir"
-    echo "Test: $test_name" > "$results_dir/parameters.txt"
-    echo "Boost duration: $boost_duration us" >> "$results_dir/parameters.txt"
-    echo "Boost weight: $boost_weight" >> "$results_dir/parameters.txt"
-    echo "Boost decay: $boost_decay us" >> "$results_dir/parameters.txt"
-    echo "Time slice: $slice_us us" >> "$results_dir/parameters.txt"
-    echo "Minimum time slice: $slice_min_us us" >> "$results_dir/parameters.txt"
+    mkdir -p "$final_results_dir"
+    echo "Test: $test_name" > "$final_results_dir/parameters.txt"
+    echo "Boost duration: $boost_duration us" >> "$final_results_dir/parameters.txt"
+    echo "Boost weight: $boost_weight" >> "$final_results_dir/parameters.txt"
+    echo "Boost decay: $boost_decay us" >> "$final_results_dir/parameters.txt"
+    echo "Time slice: $slice_us us" >> "$final_results_dir/parameters.txt"
+    echo "Minimum time slice: $slice_min_us us" >> "$final_results_dir/parameters.txt"
 
     # Run the benchmark with these parameters
     sudo /home/ernesto/Documents/AFLplusplus/afl_scheduler/benchmark_comparison.sh \
@@ -114,12 +145,15 @@ run_benchmark() {
         --boost-decay "$boost_decay" \
         --slice "$slice_us" \
         --min-slice "$slice_min_us" \
-        --results-dir "$results_dir"
+        --results-dir "$tmp_results_dir" \
+        --final-results-dir "$final_results_dir"
 
     # Copy the comparison report to our test directory
-    cp enhanced_simple_benchmark_latest.txt "$results_dir/comparison_report.txt"
+    if [ -f "enhanced_simple_benchmark_latest.txt" ]; then
+        cp enhanced_simple_benchmark_latest.txt "$final_results_dir/comparison_report.txt"
+    fi
 
-    echo "Benchmark completed. Results in $results_dir/"
+    echo "Benchmark completed. Results in $final_results_dir/"
     echo ""
 }
 
@@ -193,8 +227,8 @@ run_all_benchmarks() {
 
 # Function to run a single benchmark with custom parameters
 run_custom_benchmark() {
-    if [ $# -ne 7 ]; then
-        echo "Usage: $0 custom <test_name> <boost_duration> <boost_weight> <boost_decay> <slice_us> <slice_min_us>"
+    if [ $# -lt 7 ]; then
+        echo "Usage: $0 custom <test_name> <boost_duration> <boost_weight> <boost_decay> <slice_us> <slice_min_us> [tmp_dir] [final_dir]"
         exit 1
     fi
 
@@ -204,8 +238,10 @@ run_custom_benchmark() {
     local boost_decay="$5"
     local slice_us="$6"
     local slice_min_us="$7"
+    local custom_tmp_dir="$8"
+    local custom_final_dir="$9"
 
-    run_benchmark "$test_name" "$boost_duration" "$boost_weight" "$boost_decay" "$slice_us" "$slice_min_us"
+    run_benchmark "$test_name" "$boost_duration" "$boost_weight" "$boost_decay" "$slice_us" "$slice_min_us" "$custom_tmp_dir" "$custom_final_dir"
 }
 
 # Main function
