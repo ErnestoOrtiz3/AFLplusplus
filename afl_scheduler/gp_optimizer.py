@@ -705,7 +705,8 @@ def predict_optimal_parameters(X_sample, y_sample, bounds):
     return optimal_params, predicted_score
 
 def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEFAULT_INITIAL_SAMPLES, 
-         replications=DEFAULT_REPLICATIONS, acquisition_func="ucb", kappa=2.0, xi=0.01):
+         replications=DEFAULT_REPLICATIONS, acquisition_func="ucb", kappa=2.0, xi=0.01, 
+         decrease_exploration=True):
     """Main function to run the optimization.
 
     Args:
@@ -716,6 +717,7 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
         acquisition_func: Acquisition function to use ("ei" or "ucb")
         kappa: Exploration parameter for UCB (higher values favor exploration)
         xi: Exploration parameter for EI (higher values favor exploration)
+        decrease_exploration: Whether to decrease exploration parameters over time
     """
     # Ensure initial_samples doesn't exceed n_trials
     if initial_samples > n_trials:
@@ -728,6 +730,8 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
     logger.info(f"Starting Gaussian Process optimization with {n_trials} total trials ({initial_samples} initial + {optimization_trials} optimization)")
     logger.info(f"Each benchmark will run for {duration} minutes with {replications} replications")
     logger.info(f"Using acquisition function: {acquisition_func}")
+    if decrease_exploration:
+        logger.info(f"Exploration parameters will decrease over time")
     logger.info(f"Results will be saved to {RESULTS_DIR}")
 
     # Save configuration
@@ -790,10 +794,32 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
     bounds = [(0, 1) for _ in range(len(PARAM_SPACE))]
 
     for i in range(initial_samples + 1, n_trials + 1):
+        # Calculate the progress through optimization (0 to 1)
+        if optimization_trials > 1:
+            progress = (i - initial_samples - 1) / (optimization_trials - 1)
+        else:
+            progress = 1.0
+            
+        # Decrease exploration parameters over time if enabled
+        current_kappa = kappa
+        current_xi = xi
+        
+        if decrease_exploration:
+            # Linearly decrease kappa from initial value to 0.5
+            if acquisition_func.lower() == "ucb":
+                current_kappa = max(0.5, kappa * (1.0 - 0.75 * progress))
+                logger.info(f"Trial {i}: Using decreased kappa={current_kappa:.2f} (progress: {progress:.2f})")
+            else:
+                current_xi = max(0.001, xi * (1.0 - 0.9 * progress))
+                logger.info(f"Trial {i}: Using decreased xi={current_xi:.4f} (progress: {progress:.2f})")
+        
         # Propose next parameters using GP and acquisition function
-        next_params_normalized = propose_next_parameters(X_sample, y_sample, bounds, 
-                                                        acquisition_func=acquisition_func,
-                                                        kappa=kappa, xi=xi)
+        next_params_normalized = propose_next_parameters(
+            X_sample, y_sample, bounds, 
+            acquisition_func=acquisition_func,
+            kappa=current_kappa, 
+            xi=current_xi
+        )
 
         # Convert normalized parameters to actual values
         param_dict = {}
@@ -1202,7 +1228,7 @@ def generate_visualizations(results_dir=None):
 
 if __name__ == "__main__":
     import argparse
-
+    
     parser = argparse.ArgumentParser(description="Gaussian Process optimization for AFL++ scheduler parameters")
     parser.add_argument("--trials", type=int, default=DEFAULT_TRIALS,
                         help=f"Number of trials to run (default: {DEFAULT_TRIALS})")
@@ -1216,16 +1242,20 @@ if __name__ == "__main__":
                         help="Only generate visualizations for the most recent results")
     parser.add_argument("--results-dir", type=str,
                         help="Specify a results directory to visualize (for --visualize-only)")
-    parser.add_argument("--acquisition-func", type=str, default="ucb",
+    parser.add_argument("--acquisition", type=str, default="ucb",
                         choices=["ucb", "ei"],
                         help="Acquisition function to use: ucb (Upper Confidence Bound) or ei (Expected Improvement) (default: ucb)")
     parser.add_argument("--kappa", type=float, default=2.0,
                         help="Exploration parameter for UCB (default: 2.0)")
     parser.add_argument("--xi", type=float, default=0.01,
                         help="Exploration parameter for EI (default: 0.01)")
-
+    parser.add_argument("--decrease-exploration", action="store_true", default=True,
+                        help="Decrease exploration parameters over time (default)")
+    parser.add_argument("--no-decrease-exploration", action="store_false", dest="decrease_exploration",
+                        help="Don't decrease exploration parameters over time")
+    
     args = parser.parse_args()
-
+    
     if args.visualize_only:
         # Only generate visualizations
         if args.results_dir:
@@ -1244,9 +1274,10 @@ if __name__ == "__main__":
             duration=args.duration,
             initial_samples=args.initial_samples,
             replications=args.replications,
-            acquisition_func=args.acquisition_func,
+            acquisition_func=args.acquisition,
             kappa=args.kappa,
-            xi=args.xi
+            xi=args.xi,
+            decrease_exploration=args.decrease_exploration
         )
 
         # Generate visualizations after optimization

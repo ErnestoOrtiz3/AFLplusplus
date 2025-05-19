@@ -17,6 +17,7 @@ REPLICATIONS=1
 ACQUISITION="ucb"  # Default to UCB, EI is "ei"
 KAPPA=2.0
 XI=0.01
+DECREASE_EXPLORATION=true
 VISUALIZE_ONLY=false
 RESULTS_DIR=""
 
@@ -59,6 +60,14 @@ while [[ $# -gt 0 ]]; do
       RESULTS_DIR="$2"
       shift 2
       ;;
+    --decrease-exploration)
+      DECREASE_EXPLORATION=true
+      shift
+      ;;
+    --no-decrease-exploration)
+      DECREASE_EXPLORATION=false
+      shift
+      ;;
     -h|--help)
       echo "Usage: sudo $0 [options]"
       echo ""
@@ -93,6 +102,13 @@ if [ "$VISUALIZE_ONLY" = true ]; then
   fi
 else
   # Run the full optimization
+  DECREASE_FLAG=""
+  if [ "$DECREASE_EXPLORATION" = true ]; then
+    DECREASE_FLAG="--decrease-exploration"
+  else
+    DECREASE_FLAG="--no-decrease-exploration"
+  fi
+  
   python3 ./afl_scheduler/gp_optimizer.py \
     --trials "$TRIALS" \
     --duration "$DURATION" \
@@ -100,7 +116,8 @@ else
     --replications "$REPLICATIONS" \
     --acquisition "$ACQUISITION" \
     --kappa "$KAPPA" \
-    --xi "$XI"
+    --xi "$XI" \
+    $DECREASE_FLAG
 fi
 
 echo "Optimization completed. Check the gp_optimization_results_* directory for results."
