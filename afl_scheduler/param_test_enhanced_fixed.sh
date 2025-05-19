@@ -16,6 +16,22 @@ SCHEDULER_ORDER="custom_first"
 BASE_RESULTS_DIR="enhanced_param_tests_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$BASE_RESULTS_DIR"
 
+# Create temporary directory for fuzzing
+TMP_FUZZING_DIR=$(mktemp -d -p /tmp afl_fuzzing_XXXXXX)
+if [ ! -d "$TMP_FUZZING_DIR" ]; then
+    echo "Error: Failed to create temporary directory"
+    exit 1
+fi
+
+# Cleanup function to remove temporary files
+cleanup_tmp() {
+    echo "Cleaning up temporary directory: $TMP_FUZZING_DIR"
+    rm -rf "$TMP_FUZZING_DIR"
+}
+
+# Register cleanup function to run on exit
+trap cleanup_tmp EXIT
+
 # Function to assign power schedule based on instance number and total count
 assign_power_schedule() {
     local instance_num=$1
@@ -100,7 +116,7 @@ run_benchmark() {
     echo "Time slice: $slice_us us" >> "$results_dir/parameters.txt"
     echo "Minimum time slice: $slice_min_us us" >> "$results_dir/parameters.txt"
 
-    # Run the benchmark with these parameters
+    # Run the benchmark with these parameters, using the temporary directory
     sudo /home/ernesto/Documents/AFLplusplus/afl_scheduler/enhanced_simple_benchmark_fixed.sh \
         --duration "$DURATION" \
         --num-instances "$NUM_INSTANCES" \
@@ -114,10 +130,18 @@ run_benchmark() {
         --boost-decay "$boost_decay" \
         --slice "$slice_us" \
         --min-slice "$slice_min_us" \
-        --results-dir "$results_dir"
+        --results-dir "$TMP_FUZZING_DIR/$test_name" \
+        --final-results-dir "$results_dir"
 
-    # Copy the custom report to our test directory
-    cp enhanced_simple_benchmark_latest.txt "$results_dir/custom_report.txt"
+    # Copy only essential files from temporary directory to final results
+    if [ -f "$TMP_FUZZING_DIR/$test_name/custom_report.txt" ]; then
+        cp "$TMP_FUZZING_DIR/$test_name/custom_report.txt" "$results_dir/custom_report.txt"
+    fi
+    
+    # Copy parameters.txt if it exists in the temp dir (might have additional info)
+    if [ -f "$TMP_FUZZING_DIR/$test_name/parameters.txt" ]; then
+        cp "$TMP_FUZZING_DIR/$test_name/parameters.txt" "$results_dir/parameters.txt"
+    fi
 
     echo "Benchmark completed. Results in $results_dir/"
     echo ""

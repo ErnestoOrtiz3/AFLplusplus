@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger("gp_optimizer")
 
 # Constants
-DEFAULT_TRIALS = 2
+DEFAULT_TRIALS = 7
 DEFAULT_DURATION = 1  # minutes per benchmark
 DEFAULT_INITIAL_SAMPLES = 1
 DEFAULT_REPLICATIONS = 1  # Number of replications for each parameter combination
@@ -202,6 +202,21 @@ def run_benchmark(params, trial_num, duration, replications=DEFAULT_REPLICATIONS
         # Store the metrics and score for this replication
         all_metrics.append(metrics)
         all_scores.append(score)
+
+        # Clean up the fuzzing directories to save inodes
+        try:
+            # Only keep the report files, delete everything else
+            for item in results_dir.glob("*"):
+                if item.name != "custom_report.txt" and item.name != "comparison_report.txt":
+                    if item.is_dir():
+                        import shutil
+                        shutil.rmtree(item)
+                    else:
+                        item.unlink()
+            
+            logger.info(f"Cleaned up fuzzing directories for trial {trial_num}, replication {rep}")
+        except Exception as e:
+            logger.error(f"Error cleaning up fuzzing directories: {e}")
 
     # If all replications failed, return None
     if not all_scores:
@@ -704,6 +719,25 @@ def predict_optimal_parameters(X_sample, y_sample, bounds):
 
     return optimal_params, predicted_score
 
+def cleanup_old_test_directories(keep_latest=5):
+    """Clean up old test directories to save disk space and inodes.
+    
+    Args:
+        keep_latest: Number of latest test directories to keep
+    """
+    try:
+        # Find all enhanced_param_tests_* directories
+        test_dirs = sorted(Path(".").glob("enhanced_param_tests_*"))
+        
+        # Keep the latest 'keep_latest' directories, delete the rest
+        if len(test_dirs) > keep_latest:
+            for old_dir in test_dirs[:-keep_latest]:
+                logger.info(f"Cleaning up old test directory: {old_dir}")
+                import shutil
+                shutil.rmtree(old_dir)
+    except Exception as e:
+        logger.error(f"Error cleaning up old test directories: {e}")
+
 def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEFAULT_INITIAL_SAMPLES, 
          replications=DEFAULT_REPLICATIONS, acquisition_func="ucb", kappa=2.0, xi=0.01, 
          decrease_exploration=True):
@@ -794,6 +828,10 @@ def main(n_trials=DEFAULT_TRIALS, duration=DEFAULT_DURATION, initial_samples=DEF
     bounds = [(0, 1) for _ in range(len(PARAM_SPACE))]
 
     for i in range(initial_samples + 1, n_trials + 1):
+        # Clean up old test directories every 10 trials
+        if (i - initial_samples) % 10 == 0:
+            cleanup_old_test_directories(keep_latest=5)
+        
         # Calculate the progress through optimization (0 to 1)
         if optimization_trials > 1:
             progress = (i - initial_samples - 1) / (optimization_trials - 1)
