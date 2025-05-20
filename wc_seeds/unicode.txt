@@ -1,0 +1,6 @@
+Unicode characters: áéíóú ñ ç ß Ä Ö Ü
+Symbols: € £ ¥ © ® ™ ♥ ★ ☺ ☂
+Emojis: 😀 🚀 🌍 🎉 🐱
+Multiple lines with mixed content
+Line with 汉字 (Chinese characters)
+Line with Русский (Russian characters)

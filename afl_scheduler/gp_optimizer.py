@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger("gp_optimizer")
 
 # Constants
-DEFAULT_TRIALS = 7
+DEFAULT_TRIALS = 1
 DEFAULT_DURATION = 1  # minutes per benchmark
 DEFAULT_INITIAL_SAMPLES = 1
 DEFAULT_REPLICATIONS = 1  # Number of replications for each parameter combination

@@ -6,7 +6,7 @@
 # Default benchmark parameters
 DURATION=1
 NUM_INSTANCES=4
-TARGET_PROGRAM="./complex_target_afl"
+TARGET_PROGRAM="./wc"
 TARGET_ARGS="@@"
 MEMORY_LIMIT="none"
 TIMEOUT="7500+"
