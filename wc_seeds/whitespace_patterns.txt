@@ -1,0 +1,21 @@
+    Leading spaces on this line
+Trailing spaces on this line    
+	Leading tab on this line
+Multiple			tabs		between		words
+No spaces between
+these
+words
+but
+newlines
+instead
+
+Multiple consecutive newlines above
+
+Spaces   between   words   with   varying   counts
+Mixed   	 whitespace 	  characters  	   in 	    this    	     line
+A line with only spaces:     
+A line with only tabs:			
+Empty lines:
+
+
+End of file with no final newline

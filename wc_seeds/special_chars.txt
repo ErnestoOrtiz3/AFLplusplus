@@ -1,0 +1,10 @@
+Special characters: !@#$%^&*()_+{}|:"<>?~`-=[]\\;',./
+Non-breaking spaces: word word word
+Tab characters:	word	word	word
+Vertical tabs: word
+word
+Carriage returns: word
+word
+Form feeds: word
+word
+Unicode characters: ñáéíóúü¿¡€£¥©®™½¼¾

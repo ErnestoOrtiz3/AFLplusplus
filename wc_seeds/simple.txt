@@ -1,0 +1,4 @@
+This is a simple text file.
+It has a few lines.
+Each line has some words.
+This will test basic functionality.
