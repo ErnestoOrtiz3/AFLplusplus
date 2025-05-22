@@ -1,0 +1,10 @@
+line with "quotes"
+line with 'single quotes'
+line with	tabs	inside
+line with
+newlines in between
+line with special chars: !@#$%^&*()
+line with unicode: café résumé naïve
+line with null bytes: test
+line with backslashes: \n\t\r\\
+line with very long content that might cause buffer issues and trigger edge cases in the processing logic

@@ -1,0 +1,5 @@
+Binary data with null bytes: test data
+More binary content with special characters
+Data that might confuse line processing
+Content with embedded nulls and special sequences
+Final line of binary-like data

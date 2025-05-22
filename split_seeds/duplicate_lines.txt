@@ -1,0 +1,10 @@
+duplicate line
+duplicate line
+unique line 1
+duplicate line
+unique line 2
+duplicate line
+duplicate line
+unique line 3
+duplicate line
+unique line 4

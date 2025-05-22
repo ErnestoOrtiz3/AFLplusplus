@@ -1,0 +1,60 @@
+This is a large file designed to trigger the enhanced processing mode with complex code paths and potential bugs
+Line 2 contains some additional content to make this file larger
+Line 3 with more text content
+Line 4 is designed to be longer to increase file size
+Line 5 contains additional text
+Line 6 with more content
+Line 7 has extra text
+Line 8 contains more data
+Line 9 with additional content
+Line 10 has more text
+Line 11 contains extra data
+Line 12 with more content
+Line 13 has additional text
+Line 14 contains more data
+Line 15 with extra content
+Line 16 has more text
+Line 17 contains additional data
+Line 18 with more content
+Line 19 has extra text
+Line 20 contains more data
+Line 21 with additional content
+Line 22 has more text
+Line 23 contains extra data
+Line 24 with more content
+Line 25 has additional text
+Line 26 contains more data
+Line 27 with extra content
+Line 28 has more text
+Line 29 contains additional data
+Line 30 with more content
+Line 31 has extra text
+Line 32 contains more data
+Line 33 with additional content
+Line 34 has more text
+Line 35 contains extra data
+Line 36 with more content
+Line 37 has additional text
+Line 38 contains more data
+Line 39 with extra content
+Line 40 has more text
+Line 41 contains additional data
+Line 42 with more content
+Line 43 has extra text
+Line 44 contains more data
+Line 45 with additional content
+Line 46 has more text
+Line 47 contains extra data
+Line 48 with more content
+Line 49 has additional text
+Line 50 contains more data to make this file large enough to trigger enhanced processing mode
+This is a very long line that exceeds 100 characters and should trigger the special processing for long lines in the enhanced mode, potentially causing use-after-free bugs
+Another very long line designed to exercise the complex code paths and trigger the intricate processing logic that contains multiple potential vulnerabilities and edge cases
+Line 53 with normal content
+Line 54 has some text
+Yet another extremely long line that should trigger the cache management code and potentially cause buffer overflows or other memory management issues in the enhanced processing mode
+Line 56 with content
+Line 57 has text
+Line 58 contains data
+Line 59 with content
+Final line 60 to complete this large file that should trigger enhanced processing
