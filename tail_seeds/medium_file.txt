@@ -1,0 +1,30 @@
+This is a medium-sized file designed to trigger the middle processing path
+It contains multiple lines of varying lengths to test different scenarios
+Line 3 with some content
+Line 4 is longer and contains more text to exercise different buffer handling scenarios
+Line 5
+Line 6 with some additional content
+Line 7
+Line 8 is another longer line that should help exercise the line processing logic
+Line 9
+Line 10
+Line 11 with more content
+Line 12
+Line 13 is designed to be longer than average to test buffer boundaries
+Line 14
+Line 15
+Line 16 with additional text content
+Line 17
+Line 18 contains more text to reach the medium file size threshold
+Line 19
+Line 20
+Line 21 with extra content
+Line 22
+Line 23 is another line with additional text content
+Line 24
+Line 25
+Line 26 with more text
+Line 27
+Line 28 contains additional content to make this a medium-sized file
+Line 29
+Line 30

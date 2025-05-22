@@ -1,0 +1,50 @@
+This is a large file designed to trigger the enhanced processing mode with complex code paths and potential bugs
+Line 2 contains some additional content to make this file larger and exercise different processing modes
+Line 3 with more text content to increase file size
+Line 4 is designed to be longer to increase file size and trigger enhanced processing
+Line 5 contains additional text to make the file large enough
+Line 6 with more content to reach the size threshold
+Line 7 has extra text to increase file size
+Line 8 contains more data to make this file large
+Line 9 with additional content to trigger enhanced mode
+Line 10 has more text to increase file size
+Line 11 contains extra data to make file larger
+Line 12 with more content to reach size threshold
+Line 13 has additional text to increase size
+Line 14 contains more data to make file large
+Line 15 with extra content to trigger enhanced processing
+Line 16 has more text to increase file size
+Line 17 contains additional data to make file larger
+Line 18 with more content to reach threshold
+Line 19 has extra text to increase file size
+Line 20 contains more data to make this file large enough
+Line 21 with additional content to trigger enhanced processing mode
+Line 22 has more text to increase the overall file size
+Line 23 contains extra data to make the file larger
+Line 24 with more content to reach the size threshold
+Line 25 has additional text to increase file size
+Line 26 contains more data to make this file large
+Line 27 with extra content to trigger enhanced mode
+Line 28 has more text to increase file size
+Line 29 contains additional data to make file larger
+Line 30 with more content to reach the size threshold
+Line 31 has extra text to increase file size
+Line 32 contains more data to make this file large
+Line 33 with additional content to trigger enhanced processing
+Line 34 has more text to increase file size
+Line 35 contains extra data to make file larger
+Line 36 with more content to reach threshold
+Line 37 has additional text to increase size
+Line 38 contains more data to make file large
+Line 39 with extra content to trigger enhanced mode
+Line 40 has more text to increase file size
+Line 41 contains additional data to make file larger
+Line 42 with more content to reach size threshold
+Line 43 has extra text to increase file size
+Line 44 contains more data to make this file large enough
+Line 45 with additional content to trigger enhanced processing mode
+Line 46 has more text to increase the overall file size
+Line 47 contains extra data to make the file larger
+Line 48 with more content to reach the size threshold
+Line 49 has additional text to increase file size
+Line 50 contains more data to make this file large enough to trigger enhanced processing mode

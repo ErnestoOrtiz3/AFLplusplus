@@ -1,0 +1,5 @@
+This is a very long line that exceeds typical buffer sizes and should trigger enhanced processing mode with complex code paths and potential buffer overflow conditions in the tail program implementation
+Short line
+This is another extremely long line that contains many characters and should exercise the intricate code paths in the fuzzing target program, potentially triggering use-after-free bugs and other memory management issues that are embedded in the code
+Normal line
+Yet another very long line designed to test the limits of the buffer management system and exercise edge cases in the line processing logic that might reveal subtle bugs in the implementation of the tail functionality
