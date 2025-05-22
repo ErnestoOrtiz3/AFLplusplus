@@ -6,7 +6,7 @@
 # Default benchmark parameters
 DURATION=1
 NUM_INSTANCES=4
-TARGET_PROGRAM="./chroot"
+TARGET_PROGRAM="./uniq"
 TARGET_ARGS="@@"
 MEMORY_LIMIT="none"
 TIMEOUT="7500+"
@@ -15,11 +15,11 @@ CUSTOM_RESULTS_DIR=""   # Optional custom results directory
 FINAL_RESULTS_DIR=""    # Final destination for essential results
 
 # Default scheduler parameters
-BOOST_DURATION=3372000
-BOOST_WEIGHT=3000
+BOOST_DURATION=3500000
+BOOST_WEIGHT=5000
 BOOST_DECAY=3240000
-SLICE_US=37000
-SLICE_MIN_US=8000
+SLICE_US=35000
+SLICE_MIN_US=3000
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -306,7 +306,7 @@ run_benchmark() {
         POWER_SCHEDULE=$(assign_power_schedule "$i" "$NUM_INSTANCES")
 
         # Start AFL++ instance
-        sudo AFL_NO_AFFINITY=1 AFL_TMPDIR="$TMP_DIR" /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/chroot_seeds -o "$output_dir" \
+        sudo AFL_NO_AFFINITY=1 AFL_TMPDIR="$TMP_DIR" /home/ernesto/Documents/AFLplusplus/afl-fuzz -i /home/ernesto/Documents/AFLplusplus/uniq_seeds -o "$output_dir" \
             $AFL_MODE "fuzzer$i" -t "$TIMEOUT" -m "$MEMORY_LIMIT" $POWER_SCHEDULE \
             -- "$TARGET_PROGRAM" "$TARGET_ARGS" &
 

@@ -1,0 +1,6 @@
+This is a very long line that exceeds the typical buffer size and should trigger the enhanced processing mode with more complex code paths and potential buffer overflow conditions
+This is a very long line that exceeds the typical buffer size and should trigger the enhanced processing mode with more complex code paths and potential buffer overflow conditions
+Short line
+This is another very long line that is different from the first one but still long enough to trigger special processing modes and exercise the intricate code paths in the fuzzing target program
+Normal line
+Normal line

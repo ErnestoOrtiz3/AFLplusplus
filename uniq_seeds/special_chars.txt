@@ -1,0 +1,9 @@
+line with "quotes"
+line with 'single quotes'
+line with	tabs	inside
+line with
+newlines
+line with special chars: !@#$%^&*()
+line with unicode: café résumé naïve
+line with	tabs	inside
+line with special chars: !@#$%^&*()

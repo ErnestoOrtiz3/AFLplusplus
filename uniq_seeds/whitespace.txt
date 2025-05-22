@@ -1,0 +1,6 @@
+   leading spaces
+	tab line
+   leading spaces
+normal line
+	tab line
+   trailing spaces   
