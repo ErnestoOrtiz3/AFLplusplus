@@ -1,1 +1,0 @@
-This is a very long line of text that contains many words and characters to test the word counting functionality of the wc program. The line is intentionally long to ensure that the buffer handling in the program works correctly. It should be able to handle lines of arbitrary length without any issues. This will help test the robustness of the implementation.
