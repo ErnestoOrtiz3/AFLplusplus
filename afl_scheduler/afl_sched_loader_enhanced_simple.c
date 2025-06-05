@@ -54,13 +54,6 @@ struct discovery_event {
 #define DEFAULT_SLICE_MIN_US 5000          // Minimum time slice in microseconds
 #define DEFAULT_BOOST_DECAY_PERIOD_US 2000000 // Period over which boost decays
 
-// BPF filesystem directory
-#define BPF_FS_DIR "/sys/fs/bpf/afl_scheduler"
-
-// Map paths
-#define WEIGHTS_MAP_PATH BPF_FS_DIR "/afl_weights"
-#define BOOST_MAP_PATH BPF_FS_DIR "/afl_boost_until"
-
 // Global state
 static volatile int running = 1;
 static struct afl_sched_enhanced_simple_bpf *skel = NULL;
@@ -143,12 +136,6 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
 
-    // Create BPF filesystem directory if it doesn't exist
-    if (mkdir(BPF_FS_DIR, 0700) && errno != EEXIST) {
-        fprintf(stderr, "Failed to create BPF filesystem directory: %s\n", strerror(errno));
-        return 1;
-    }
-
     // Load and verify BPF application
     skel = afl_sched_enhanced_simple_bpf__open();
     if (!skel) {
@@ -193,14 +180,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Pin maps to the filesystem
-    err = pin_maps();
-    if (err) {
-        fprintf(stderr, "Failed to pin maps: %s\n", strerror(-err));
-        cleanup();
-        return 1;
-    }
-
     printf("\n==================================================\n");
     printf("🎯 AFL++ Enhanced CPU Scheduler (Simple) loaded successfully\n");
     printf("==================================================\n");
@@ -210,9 +189,6 @@ int main(int argc, char *argv[]) {
     printf("  📉 Boost decay period: %llu microseconds\n", (unsigned long long)boost_decay_period_us);
     printf("  ⏲️  Time slice: %llu microseconds\n", (unsigned long long)slice_us);
     printf("  ⏲️  Minimum time slice: %llu microseconds\n", (unsigned long long)slice_min_us);
-    printf("\n📍 Maps pinned to:\n");
-    printf("  📊 Weights map: %s\n", WEIGHTS_MAP_PATH);
-    printf("  🚀 Boost map: %s\n", BOOST_MAP_PATH);
     printf("\n🔄 Direct BPF boosting enabled (microsecond latency)\n");
     if (expected_instances > 0) {
         printf("🔍 Will stop scanning after attaching to %d AFL++ instances\n", expected_instances);
@@ -426,41 +402,6 @@ static void print_usage(const char *prog_name) {
     printf("  -h           Show this help message\n");
 }
 
-// Pin maps to the filesystem
-static int pin_maps(void) {
-    int err;
-
-    // Pin the weights map
-    err = bpf_map__pin(skel->maps.afl_weights, WEIGHTS_MAP_PATH);
-    if (err) {
-        // If map already exists, unpin it first and try again
-        if (errno == EEXIST) {
-            unlink(WEIGHTS_MAP_PATH);
-            err = bpf_map__pin(skel->maps.afl_weights, WEIGHTS_MAP_PATH);
-        }
-        if (err) {
-            return err;
-        }
-    }
-
-    // Pin the boost map
-    err = bpf_map__pin(skel->maps.afl_boost_until, BOOST_MAP_PATH);
-    if (err) {
-        // If map already exists, unpin it first and try again
-        if (errno == EEXIST) {
-            unlink(BOOST_MAP_PATH);
-            err = bpf_map__pin(skel->maps.afl_boost_until, BOOST_MAP_PATH);
-        }
-        if (err) {
-            // Clean up the weights map if we fail
-            bpf_map__unpin(skel->maps.afl_weights, WEIGHTS_MAP_PATH);
-            return err;
-        }
-    }
-
-    return 0;
-}
-
 // Signal handler
 static void handle_signal(int sig) {
     printf("Received signal %d, shutting down...\n", sig);
@@ -544,10 +485,6 @@ static int scan_for_afl_processes(int *pids, int max_pids) {
 
 // Clean up resources
 static void cleanup(void) {
-    // Unpin maps if they exist
-    unlink(WEIGHTS_MAP_PATH);
-    unlink(BOOST_MAP_PATH);
-
     if (pb) {
         perf_buffer__free(pb);
         pb = NULL;
