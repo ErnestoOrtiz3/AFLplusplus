@@ -32,8 +32,6 @@ const volatile u64 prio_boost_duration_us = 1000000; // 1 second boost after fin
 const volatile u32 boost_weight = 1000;              // Weight to assign during boost period
 const volatile u64 boost_decay_period_us = 2000000;  // Period over which boost decays after expiration
 
-/* Define shared DSQ ID for non-AFL processes */
-#define NON_AFL_SHARED_DSQ 1
 
 /* Scheduler state */
 struct {
@@ -133,69 +131,49 @@ struct {
 /* Check if a process is a critical system process */
 static bool is_critical_system_process(struct task_struct *p)
 {
-    char comm[16];
     u16 rt_priority;
+    u32 comm_word1, comm_word2;
 
-    // Check for RT priority tasks
+    // RT priority check first
     if (bpf_probe_read_kernel(&rt_priority, sizeof(rt_priority), &p->rt_priority)) {
         return false;
     }
+    if (rt_priority > 0) return true;
 
-    // RT priority tasks are critical
-    if (rt_priority > 0) {
-        return true;
-    }
-
-    // Read process name
-    if (bpf_probe_read_kernel(comm, sizeof(comm), &p->comm)) {
+    // Read first 8 bytes as two u32s
+    if (bpf_probe_read_kernel(&comm_word1, sizeof(comm_word1), &p->comm) ||
+        bpf_probe_read_kernel(&comm_word2, sizeof(comm_word2), &p->comm[4])) {
         return false;
     }
 
-    // Check for kswapd
-    if (comm[0] == 'k' && comm[1] == 's' && comm[2] == 'w' &&
-        comm[3] == 'a' && comm[4] == 'p' && comm[5] == 'd') {
-        return true;
-    }
-
-    // Check for systemd
-    if (comm[0] == 's' && comm[1] == 'y' && comm[2] == 's' &&
-        comm[3] == 't' && comm[4] == 'e' && comm[5] == 'm' &&
-        comm[6] == 'd') {
-        return true;
-    }
-
-    return false;
+    // "kswa" = 0x6177736b, "pd\0\0" = 0x00006470
+    // "syst" = 0x74737973, "emd\0" = 0x00646d65
+    return (comm_word1 == 0x6177736b && (comm_word2 & 0x0000ffff) == 0x00006470) ||
+           (comm_word1 == 0x74737973 && (comm_word2 & 0x00ffffff) == 0x00646d65);
 }
 
 /* Check if a process is an AFL stats process (afl-fuzz main process) */
 static bool is_afl_stats_process(struct task_struct *p)
 {
-    char comm[16];
+    u32 comm_word1, comm_word2;
     pid_t pid, tgid;
 
-    // Read process name
-    if (bpf_probe_read_kernel(comm, sizeof(comm), &p->comm)) {
+    // Fast path: Read first 8 bytes as two u32s for string comparison
+    if (bpf_probe_read_kernel(&comm_word1, sizeof(comm_word1), &p->comm) ||
+        bpf_probe_read_kernel(&comm_word2, sizeof(comm_word2), &p->comm[4]))
         return false;
-    }
+        
+    // "afl-" = 0x2d6c6661, "fuzz" = 0x7a7a7566 (little-endian)
+    if (comm_word1 != 0x2d6c6661 || comm_word2 != 0x7a7a7566)
+        return false;
 
-    // Check if it's afl-fuzz
-    if (comm[0] == 'a' && comm[1] == 'f' && comm[2] == 'l' &&
-        comm[3] == '-' && comm[4] == 'f' && comm[5] == 'u' &&
-        comm[6] == 'z' && comm[7] == 'z') {
+    // Only check PID/TGID if we confirmed it's afl-fuzz
+    if (bpf_probe_read_kernel(&pid, sizeof(pid), &p->pid) ||
+        bpf_probe_read_kernel(&tgid, sizeof(tgid), &p->tgid))
+        return false;
 
-        // Check if it's the main process (group leader)
-        if (bpf_probe_read_kernel(&pid, sizeof(pid), &p->pid) ||
-            bpf_probe_read_kernel(&tgid, sizeof(tgid), &p->tgid)) {
-            return false;
-        }
-
-        // Main process has pid == tgid
-        if (pid == tgid) {
-            return true;
-        }
-    }
-
-    return false;
+    // Main process has pid == tgid (thread group leader)
+    return pid == tgid;
 }
 
 /* Fast check for AFL process - optimized version */
@@ -213,20 +191,15 @@ static bool is_afl_process_fast(struct task_struct *p)
 /* Full check for AFL process - more thorough but slower */
 static bool is_afl_process(struct task_struct *p)
 {
-    char comm[16];
-
-    // Use bpf_probe_read_kernel to safely read the comm field
-    if (bpf_probe_read_kernel(comm, sizeof(comm), &p->comm))
+    u32 comm_word1, comm_word2;
+    
+    // Read first 8 bytes as two u32s
+    if (bpf_probe_read_kernel(&comm_word1, sizeof(comm_word1), &p->comm) ||
+        bpf_probe_read_kernel(&comm_word2, sizeof(comm_word2), &p->comm[4]))
         return false;
-
-    // Check if the process name matches afl-fuzz
-    if (comm[0] == 'a' && comm[1] == 'f' && comm[2] == 'l' &&
-        comm[3] == '-' && comm[4] == 'f' && comm[5] == 'u' &&
-        comm[6] == 'z' && comm[7] == 'z') {
-        return true;
-    }
-
-    return false;
+        
+    // "afl-" = 0x2d6c6661, "fuzz" = 0x7a7a7566 (little-endian)
+    return comm_word1 == 0x2d6c6661 && comm_word2 == 0x7a7a7566;
 }
 
 /* Get task weight with enhanced logic */
@@ -342,56 +315,7 @@ static void update_stats(u64 dispatches, u64 afl_dispatches, u64 boosted_dispatc
     stats_p->boosted_dispatches += boosted_dispatches;
 }
 
-/* Queue helper functions */
-static bool queue_push(struct task_struct *task)
-{
-    u32 key = 0;
-    struct {
-        u32 head;
-        u32 tail;
-    } *state;
 
-    state = bpf_map_lookup_elem(&queue_state, &key);
-    if (!state)
-        return false;
-
-    u32 next_tail = (state->tail + 1) % 4096;
-    if (next_tail == state->head)
-        return false;  // Queue is full
-
-    key = state->tail;
-    if (bpf_map_update_elem(&dispatch_q, &key, &task, BPF_ANY))
-        return false;
-
-    state->tail = next_tail;
-    return true;
-}
-
-static struct task_struct *queue_pop(void)
-{
-    u32 key = 0;
-    struct {
-        u32 head;
-        u32 tail;
-    } *state;
-
-    state = bpf_map_lookup_elem(&queue_state, &key);
-    if (!state)
-        return NULL;
-
-    if (state->head == state->tail)
-        return NULL;  // Queue is empty
-
-    key = state->head;
-    struct task_struct **task_ptr = bpf_map_lookup_elem(&dispatch_q, &key);
-    if (!task_ptr)
-        return NULL;
-
-    struct task_struct *task = *task_ptr;
-
-    state->head = (state->head + 1) % 4096;
-    return task;
-}
 
 /* Scheduler operations */
 s32 BPF_STRUCT_OPS(afl_sched_init)
@@ -400,9 +324,6 @@ s32 BPF_STRUCT_OPS(afl_sched_init)
     u64 zero = 0;
 
     bpf_map_update_elem(&min_vruntime, &key, &zero, BPF_ANY);
-
-    // We'll use SCX_DSQ_LOCAL for all processes instead of creating a shared DSQ
-    // This avoids the need for the sleepable flag
 
     return 0;
 }
@@ -511,11 +432,11 @@ s32 BPF_STRUCT_OPS(afl_sched_enqueue, struct task_struct *p, u64 enq_flags)
     if (!is_afl_process_fast(p) || !(is_afl = is_afl_process(p))) {
         // Non-AFL processes go to the shared non-AFL queue
         // They will only run when local queues are empty
-        scx_bpf_dsq_insert(p, NON_AFL_SHARED_DSQ, slice_us, 0);
+        scx_bpf_dsq_insert(p, SCX_DSQ_GLOBAL, slice_us, 0);
         return 0;
     }
 
-    // Get or create task context
+    // If AFL++ process, Get or create task context
     task_context = get_task_ctx(p);
     if (!task_context) {
         // Create new task context
@@ -649,10 +570,15 @@ s32 BPF_STRUCT_OPS(afl_sched_dispatch, s32 cpu, struct task_struct *prev)
 {
     // Try to move non-AFL tasks from the shared queue to the local queue
     // This ensures non-AFL processes run when there are no AFL processes in the local queue
-    if (scx_bpf_dsq_move_to_local(NON_AFL_SHARED_DSQ)) {
+    if (scx_bpf_dsq_move_to_local(SCX_DSQ_GLOBAL)) {
         return 0;  // Successfully moved non-AFL tasks
     }
 
+    /* This is provably never executing as the program is trigerred by an empty local queue 
+(meaning all AFL++ instances are blocked with no pending I/O). The block above will 
+look for a task in the global queue and move it to the local queue. 
+An idea for improvement is to have a map that tracks the number of consecutive runs for each task.
+(or remove it completely as it's not needed)*/
     // Implement fairness mechanism for system processes
     // If the previous task was an AFL process and ran many times consecutively,
     // we might want to yield to system tasks occasionally
